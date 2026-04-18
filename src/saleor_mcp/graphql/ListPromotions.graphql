@@ -1,0 +1,27 @@
+query ListPromotions($first: Int, $after: String, $where: PromotionWhereInput) {
+  promotions(first: $first, after: $after, where: $where) {
+    edges {
+      node {
+        id
+        name
+        description
+        startDate
+        endDate
+        rules {
+          id
+          name
+          description
+          channels {
+            slug
+          }
+          rewardValueType
+          rewardValue
+        }
+      }
+    }
+    pageInfo {
+      hasNextPage
+      endCursor
+    }
+  }
+}

@@ -101,6 +101,8 @@ class AsyncBaseClient:
         variables: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> httpx.Response:
+        # Prevent 'filter' from leaking into httpx.post kwargs
+        kwargs.pop("filter", None)
         processed_variables, files, files_map = self._process_variables(variables)
 
         if files and files_map:

@@ -1,0 +1,29 @@
+mutation CheckoutCreate($input: CheckoutCreateInput!) {
+  checkoutCreate(input: $input) {
+    checkout {
+      id
+      token
+      totalPrice {
+        gross {
+          amount
+          currency
+        }
+      }
+      lines {
+        id
+        quantity
+        variant {
+          name
+          product {
+            name
+          }
+        }
+      }
+    }
+    errors {
+      field
+      message
+      code
+    }
+  }
+}

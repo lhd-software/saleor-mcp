@@ -231,3 +231,24 @@ async def test_order_count_empty_result(
 
         data = result.data["data"]
         assert data["totalCount"] == 0
+
+
+@pytest.mark.asyncio
+async def test_track_order(sample_track_order_response, mock_saleor_config):
+    """Test tracking an order."""
+    with (
+        patch("saleor_mcp.ctx_utils.get_config_from_headers") as mock_get_config,
+        patch.object(SaleorClient, "track_order") as mock_track_order,
+    ):
+        mock_get_config.return_value = mock_saleor_config
+        mock_track_order.return_value = sample_track_order_response
+
+        async with MCPClient(mcp) as mcp_client:
+            # We use external_reference or id, here we test passing something that matches our mock
+            result = await mcp_client.call_tool("track_order", {"id": "T3JkZXI6MQ=="})
+
+        data = result.data["data"]
+        assert data["number"] == "12345"
+        assert len(data["fulfillments"]) == 1
+        assert data["fulfillments"][0]["trackingNumber"] == "TRACK123"
+        mock_track_order.assert_called_once()

@@ -286,3 +286,24 @@ async def test_warehouse_details_with_saleor_error(mock_saleor_config):
 
         assert "Invalid warehouse ID" in str(e.value)
         mock_warehouse_details.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_get_product_details(sample_product_details_response, mock_saleor_config):
+    """Test fetching product details."""
+    with (
+        patch("saleor_mcp.ctx_utils.get_config_from_headers") as mock_get_config,
+        patch.object(SaleorClient, "product_details") as mock_product_details,
+    ):
+        mock_get_config.return_value = mock_saleor_config
+        mock_product_details.return_value = sample_product_details_response
+
+        async with MCPClient(mcp) as mcp_client:
+            result = await mcp_client.call_tool(
+                "get_product_details", {"slug": "blue-hoodie"}
+            )
+
+        data = result.data["data"]
+        assert data["name"] == "Blue Hoodie"
+        assert len(data["variants"]) == 1
+        mock_product_details.assert_called_once()

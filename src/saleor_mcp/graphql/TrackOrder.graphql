@@ -1,0 +1,23 @@
+query TrackOrder($id: ID, $externalReference: String) {
+  order(id: $id, externalReference: $externalReference) {
+    id
+    number
+    status
+    created
+    fulfillments {
+      id
+      fulfillmentOrder
+      status
+      trackingNumber
+      created
+    }
+    shippingAddress {
+      streetAddress1
+      city
+      postalCode
+      country {
+        country
+      }
+    }
+  }
+}

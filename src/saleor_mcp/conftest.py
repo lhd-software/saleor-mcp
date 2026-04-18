@@ -8,6 +8,10 @@ from saleor_mcp.saleor_client.list_orders import ListOrders
 from saleor_mcp.saleor_client.list_products import ListProducts
 from saleor_mcp.saleor_client.list_stocks import ListStocks
 from saleor_mcp.saleor_client.warehouse_details import WarehouseDetails
+from saleor_mcp.saleor_client.checkout_create import CheckoutCreate
+from saleor_mcp.saleor_client.list_promotions import ListPromotions
+from saleor_mcp.saleor_client.product_details import ProductDetails
+from saleor_mcp.saleor_client.track_order import TrackOrder
 
 
 @pytest.fixture
@@ -433,3 +437,126 @@ def sample_warehouse_response():
 def empty_warehouse_response():
     """Fixture for empty warehouse response (warehouse not found)."""
     return WarehouseDetails(warehouse=None)
+
+
+@pytest.fixture
+def sample_checkout_response():
+    """Fixture for checkout create response."""
+    return CheckoutCreate.model_validate(
+        {
+            "checkoutCreate": {
+                "checkout": {
+                    "id": "Q2hlY2tvdXQ6MQ==",
+                    "token": "test-token-123",
+                    "totalPrice": {"gross": {"amount": 59.98, "currency": "USD"}},
+                    "lines": [
+                        {
+                            "id": "Q2hlY2tvdXRMaW5lOjE=",
+                            "quantity": 2,
+                            "variant": {
+                                "name": "S",
+                                "product": {"name": "Blue Hoodie"},
+                            },
+                        }
+                    ],
+                },
+                "errors": [],
+            }
+        }
+    )
+
+
+@pytest.fixture
+def sample_promotions_response():
+    """Fixture for promotions response."""
+    return ListPromotions.model_validate(
+        {
+            "promotions": {
+                "edges": [
+                    {
+                        "node": {
+                            "id": "UHJvbW90aW9uOjE=",
+                            "name": "Summer Sale",
+                            "description": "Get 20% off on all summer items",
+                            "startDate": "2023-06-01T00:00:00Z",
+                            "endDate": "2023-08-31T23:59:59Z",
+                            "rules": [
+                                {
+                                    "id": "UHJvbW90aW9uUnVsZTox",
+                                    "name": "20% Off Rule",
+                                    "description": "Apply 20% discount",
+                                    "channels": [{"slug": "default-channel"}],
+                                    "rewardValueType": "PERCENTAGE",
+                                    "rewardValue": 20.0,
+                                }
+                            ],
+                        }
+                    }
+                ],
+                "pageInfo": {"hasNextPage": False, "endCursor": "cursor123"},
+            }
+        }
+    )
+
+
+@pytest.fixture
+def sample_product_details_response():
+    """Fixture for product details response."""
+    return ProductDetails.model_validate(
+        {
+            "product": {
+                "id": "UHJvZHVjdDox",
+                "name": "Blue Hoodie",
+                "slug": "blue-hoodie",
+                "description": "A very comfortable hoodie.",
+                "category": {"name": "Hoodies"},
+                "media": [{"url": "https://example.com/image.jpg", "alt": "Blue Hoodie"}],
+                "variants": [
+                    {
+                        "id": "UHJvZHVjdFZhcmlhbnQ6MQ==",
+                        "name": "S",
+                        "sku": "BLUE-HOODIE-S",
+                        "pricing": {
+                            "price": {"gross": {"amount": 29.99, "currency": "USD"}}
+                        },
+                        "attributes": [
+                            {
+                                "attribute": {"name": "Size"},
+                                "values": [{"name": "S"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        }
+    )
+
+
+@pytest.fixture
+def sample_track_order_response():
+    """Fixture for track order response."""
+    return TrackOrder.model_validate(
+        {
+            "order": {
+                "id": "T3JkZXI6MQ==",
+                "number": "12345",
+                "status": "PARTIALLY_FULFILLED",
+                "created": "2023-10-01T12:00:00Z",
+                "fulfillments": [
+                    {
+                        "id": "RnVsZmlsbG1lbnQ6MQ==",
+                        "fulfillmentOrder": 1,
+                        "status": "FULFILLED",
+                        "trackingNumber": "TRACK123",
+                        "created": "2023-10-02T09:00:00Z",
+                    }
+                ],
+                "shippingAddress": {
+                    "streetAddress1": "123 Main St",
+                    "city": "New York",
+                    "postalCode": "10001",
+                    "country": {"country": "United States"},
+                },
+            }
+        }
+    )

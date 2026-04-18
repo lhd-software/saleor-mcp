@@ -33,24 +33,29 @@ class SaleorConfig:
 
 
 def get_config_from_headers() -> SaleorConfig:
-    """Extract Saleor configuration from HTTP headers.
+    """Extract Saleor configuration from HTTP headers or environment variables.
 
-    Note: This function works only within a request context.
+    Note: This function works only within a request context for headers,
+    but can fall back to environment variables for stdio transport.
     """
 
     allowed_domain_pattern = os.getenv("ALLOWED_DOMAIN_PATTERN", "")
     headers = get_http_headers()
 
-    api_url = headers.get("x-saleor-api-url")
+    api_url = headers.get("x-saleor-api-url") or os.getenv("SALEOR_API_URL")
     if not api_url:
-        raise ToolError("Missing X-Saleor-API-URL header")
+        raise ToolError(
+            "Missing Saleor API URL (X-Saleor-API-URL header or SALEOR_API_URL env var)"
+        )
 
     if allowed_domain_pattern and not validate_api_url(api_url, allowed_domain_pattern):
         raise ToolError(f"API URL '{api_url}' is not allowed")
 
-    auth_token = headers.get("x-saleor-auth-token")
+    auth_token = headers.get("x-saleor-auth-token") or os.getenv("SALEOR_AUTH_TOKEN")
     if not auth_token:
-        raise ToolError("Missing X-Saleor-Auth-Token header")
+        raise ToolError(
+            "Missing Saleor Auth Token (X-Saleor-Auth-Token header or SALEOR_AUTH_TOKEN env var)"
+        )
 
     return SaleorConfig(
         api_url=api_url,

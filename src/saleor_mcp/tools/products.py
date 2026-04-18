@@ -6,6 +6,7 @@ from ..ctx_utils import get_saleor_client
 from ..saleor_client.input_types import (
     ProductOrder,
     StockFilterInput,
+    ProductFilterInput,
 )
 
 products_router = FastMCP("Products MCP")
@@ -34,6 +35,7 @@ async def products(
     ] = None,
     sort_by: Annotated[ProductOrder | None, "Sort products by specific field"] = None,
     search: Annotated[str | None, "Search products with full-text search"] = None,
+    filter: Annotated[ProductFilterInput | None, "Advanced filtering options for products"] = None,
 ) -> dict[str, Any]:
     """Fetch list of products from Saleor GraphQL API.
 
@@ -48,6 +50,7 @@ async def products(
     """
 
     sort_by = sort_by.model_dump(exclude_unset=True) if sort_by else None
+    filter_data = filter.model_dump(exclude_unset=True) if filter else None
 
     data = {}
     client = get_saleor_client()
@@ -58,6 +61,7 @@ async def products(
             channel=channel,
             sortBy=sort_by,
             search=search,
+            where=filter_data,
         )
     except Exception as e:
         await ctx.error(str(e))
@@ -162,3 +166,32 @@ async def warehouse_details(
             "warehouse": warehouse_data,
         },
     }
+
+
+@products_router.tool(
+    annotations={
+        "title": "Fetch product details",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+    }
+)
+async def get_product_details(
+    ctx: Context,
+    id: Annotated[str | None, "ID of the product to fetch details for"] = None,
+    slug: Annotated[str | None, "Slug of the product to fetch details for"] = None,
+    channel: Annotated[
+        str | None, "Slug of a channel for which the data should be returned."
+    ] = None,
+) -> dict[str, Any]:
+    """Fetch detailed product information.
+    
+    This tool retrieves full product details including variants, pricing, 
+    media, and attributes. Use this when you need deeper info about a specific product.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.product_details(id=id, slug=slug, channel=channel)
+        return {"data": data.product}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise

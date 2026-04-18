@@ -121,3 +121,31 @@ async def order_count(
     return {
         "data": {"totalCount": data.orders.totalCount if data and data.orders else 0}
     }
+
+
+@orders_router.tool(
+    annotations={
+        "title": "Track order",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+    }
+)
+async def track_order(
+    ctx: Context,
+    id: Annotated[str | None, "ID of the order to track."] = None,
+    external_reference: Annotated[
+        str | None, "External reference of the order to track."
+    ] = None,
+) -> dict[str, Any]:
+    """Track an order's fulfillment status.
+    
+    This tool provides detailed information about an order's status and its fulfillments 
+    (shipments), including tracking numbers if available.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.track_order(id=id, externalReference=external_reference)
+        return {"data": data.order}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise

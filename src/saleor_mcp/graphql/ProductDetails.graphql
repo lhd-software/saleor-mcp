@@ -1,0 +1,36 @@
+query ProductDetails($id: ID, $slug: String, $channel: String) {
+  product(id: $id, slug: $slug, channel: $channel) {
+    id
+    name
+    slug
+    description
+    category {
+      name
+    }
+    media {
+      url
+      alt
+    }
+    variants {
+      id
+      name
+      sku
+      pricing {
+        price {
+          gross {
+            amount
+            currency
+          }
+        }
+      }
+      attributes {
+        attribute {
+          name
+        }
+        values {
+          name
+        }
+      }
+    }
+  }
+}
