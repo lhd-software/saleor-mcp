@@ -1,0 +1,14 @@
+mutation CheckoutPaymentCreate($id: ID!, $input: PaymentInput!) {
+  checkoutPaymentCreate(id: $id, input: $input) {
+    payment {
+      id
+      gateway
+      isActive
+    }
+    errors {
+      field
+      message
+      code
+    }
+  }
+}

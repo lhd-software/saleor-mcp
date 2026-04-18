@@ -5,19 +5,26 @@ from typing import Any, Dict, List, Optional, Union
 
 from .async_base_client import AsyncBaseClient
 from .base_model import UNSET, UnsetType
+from .checkout_billing_address_update import CheckoutBillingAddressUpdate
 from .checkout_complete import CheckoutComplete
 from .checkout_create import CheckoutCreate
+from .checkout_details import CheckoutDetails
 from .checkout_lines_add import CheckoutLinesAdd
 from .checkout_lines_delete import CheckoutLinesDelete
 from .checkout_lines_update import CheckoutLinesUpdate
+from .checkout_payment_create import CheckoutPaymentCreate
+from .checkout_shipping_address_update import CheckoutShippingAddressUpdate
+from .checkout_shipping_method_update import CheckoutShippingMethodUpdate
 from .count_orders import CountOrders
 from .input_types import (
+    AddressInput,
     CheckoutCreateInput,
     CheckoutLineInput,
     CheckoutLineUpdateInput,
     CustomerFilterInput,
     OrderFilterInput,
     OrderSortingInput,
+    PaymentInput,
     ProductOrder,
     ProductWhereInput,
     PromotionWhereInput,
@@ -40,6 +47,49 @@ def gql(q: str) -> str:
 
 
 class Client(AsyncBaseClient):
+    async def checkout_billing_address_update(
+        self, id: str, billingAddress: AddressInput, **kwargs: Any
+    ) -> CheckoutBillingAddressUpdate:
+        query = gql(
+            """
+            mutation CheckoutBillingAddressUpdate($id: ID!, $billingAddress: AddressInput!) {
+              checkoutBillingAddressUpdate(id: $id, billingAddress: $billingAddress) {
+                checkout {
+                  id
+                  billingAddress {
+                    firstName
+                    lastName
+                    streetAddress1
+                    streetAddress2
+                    city
+                    cityArea
+                    postalCode
+                    country {
+                      code
+                    }
+                    countryArea
+                    phone
+                  }
+                }
+                errors {
+                  field
+                  message
+                  code
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"id": id, "billingAddress": billingAddress}
+        response = await self.execute(
+            query=query,
+            operation_name="CheckoutBillingAddressUpdate",
+            variables=variables,
+            **kwargs
+        )
+        data = self.get_data(response)
+        return CheckoutBillingAddressUpdate.model_validate(data)
+
     async def checkout_complete(self, id: str, **kwargs: Any) -> CheckoutComplete:
         query = gql(
             """
@@ -111,6 +161,104 @@ class Client(AsyncBaseClient):
         )
         data = self.get_data(response)
         return CheckoutCreate.model_validate(data)
+
+    async def checkout_details(self, id: str, **kwargs: Any) -> CheckoutDetails:
+        query = gql(
+            """
+            query CheckoutDetails($id: ID!) {
+              checkout(id: $id) {
+                id
+                token
+                email
+                totalPrice {
+                  gross {
+                    amount
+                    currency
+                  }
+                }
+                lines {
+                  id
+                  quantity
+                  variant {
+                    name
+                    product {
+                      name
+                    }
+                  }
+                }
+                shippingAddress {
+                  firstName
+                  lastName
+                  streetAddress1
+                  streetAddress2
+                  city
+                  cityArea
+                  postalCode
+                  country {
+                    code
+                  }
+                  countryArea
+                  phone
+                }
+                billingAddress {
+                  firstName
+                  lastName
+                  streetAddress1
+                  streetAddress2
+                  city
+                  cityArea
+                  postalCode
+                  country {
+                    code
+                  }
+                  countryArea
+                  phone
+                }
+                deliveryMethod {
+                  __typename
+                  ... on ShippingMethod {
+                    id
+                    name
+                  }
+                  ... on Warehouse {
+                    id
+                    name
+                  }
+                }
+                shippingMethods {
+                  id
+                  name
+                  price {
+                    amount
+                    currency
+                  }
+                }
+                availableShippingMethods {
+                  id
+                  name
+                  price {
+                    amount
+                    currency
+                  }
+                }
+                availablePaymentGateways {
+                  id
+                  name
+                  config {
+                    field
+                    value
+                  }
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"id": id}
+        response = await self.execute(
+            query=query, operation_name="CheckoutDetails", variables=variables, **kwargs
+        )
+        data = self.get_data(response)
+        return CheckoutDetails.model_validate(data)
 
     async def checkout_lines_add(
         self,
@@ -243,6 +391,130 @@ class Client(AsyncBaseClient):
         )
         data = self.get_data(response)
         return CheckoutLinesUpdate.model_validate(data)
+
+    async def checkout_payment_create(
+        self, id: str, input: PaymentInput, **kwargs: Any
+    ) -> CheckoutPaymentCreate:
+        query = gql(
+            """
+            mutation CheckoutPaymentCreate($id: ID!, $input: PaymentInput!) {
+              checkoutPaymentCreate(id: $id, input: $input) {
+                payment {
+                  id
+                  gateway
+                  isActive
+                }
+                errors {
+                  field
+                  message
+                  code
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"id": id, "input": input}
+        response = await self.execute(
+            query=query,
+            operation_name="CheckoutPaymentCreate",
+            variables=variables,
+            **kwargs
+        )
+        data = self.get_data(response)
+        return CheckoutPaymentCreate.model_validate(data)
+
+    async def checkout_shipping_address_update(
+        self, id: str, shippingAddress: AddressInput, **kwargs: Any
+    ) -> CheckoutShippingAddressUpdate:
+        query = gql(
+            """
+            mutation CheckoutShippingAddressUpdate($id: ID!, $shippingAddress: AddressInput!) {
+              checkoutShippingAddressUpdate(id: $id, shippingAddress: $shippingAddress) {
+                checkout {
+                  id
+                  shippingAddress {
+                    firstName
+                    lastName
+                    streetAddress1
+                    streetAddress2
+                    city
+                    cityArea
+                    postalCode
+                    country {
+                      code
+                    }
+                    countryArea
+                    phone
+                  }
+                  availableShippingMethods {
+                    id
+                    name
+                    price {
+                      amount
+                      currency
+                    }
+                  }
+                }
+                errors {
+                  field
+                  message
+                  code
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"id": id, "shippingAddress": shippingAddress}
+        response = await self.execute(
+            query=query,
+            operation_name="CheckoutShippingAddressUpdate",
+            variables=variables,
+            **kwargs
+        )
+        data = self.get_data(response)
+        return CheckoutShippingAddressUpdate.model_validate(data)
+
+    async def checkout_shipping_method_update(
+        self, id: str, shippingMethodId: str, **kwargs: Any
+    ) -> CheckoutShippingMethodUpdate:
+        query = gql(
+            """
+            mutation CheckoutShippingMethodUpdate($id: ID!, $shippingMethodId: ID!) {
+              checkoutShippingMethodUpdate(id: $id, shippingMethodId: $shippingMethodId) {
+                checkout {
+                  id
+                  deliveryMethod {
+                    __typename
+                    ... on ShippingMethod {
+                      id
+                      name
+                    }
+                  }
+                  totalPrice {
+                    gross {
+                      amount
+                      currency
+                    }
+                  }
+                }
+                errors {
+                  field
+                  message
+                  code
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"id": id, "shippingMethodId": shippingMethodId}
+        response = await self.execute(
+            query=query,
+            operation_name="CheckoutShippingMethodUpdate",
+            variables=variables,
+            **kwargs
+        )
+        data = self.get_data(response)
+        return CheckoutShippingMethodUpdate.model_validate(data)
 
     async def count_orders(
         self,

@@ -58,9 +58,7 @@ app.mount("/static", StaticFiles(directory="src/saleor_mcp/static"), name="stati
 
 
 def main():
-    import uvicorn
-
-    uvicorn.run(app, host="127.0.0.1", port=6000)
+    mcp.run()
 
 
 if __name__ == "__main__":

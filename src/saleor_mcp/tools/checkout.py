@@ -2,9 +2,11 @@ from typing import Annotated, Any
 from fastmcp import Context, FastMCP
 from ..ctx_utils import get_saleor_client
 from ..saleor_client.input_types import (
+    AddressInput,
     CheckoutCreateInput,
     CheckoutLineInput,
     CheckoutLineUpdateInput,
+    PaymentInput,
 )
 
 checkout_router = FastMCP("Checkout MCP")
@@ -142,6 +144,136 @@ async def complete_checkout(
         if data.checkoutComplete.errors:
             return {"errors": data.checkoutComplete.errors}
         return {"data": data.checkoutComplete.order}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise
+
+@checkout_router.tool(
+    annotations={
+        "title": "Get Checkout Details",
+    }
+)
+async def get_checkout(
+    ctx: Context,
+    checkout_id: Annotated[str, "ID of the checkout to fetch."],
+) -> dict[str, Any]:
+    """Fetch checkout details including available shipping methods and payment gateways.
+    
+    Use this to see which shipping methods are available after setting the shipping address.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_details(id=checkout_id)
+        if not data.checkout:
+            return {"error": "Checkout not found"}
+        return {"data": data.checkout}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise
+
+@checkout_router.tool(
+    annotations={
+        "title": "Set Shipping Address",
+    }
+)
+async def set_shipping_address(
+    ctx: Context,
+    checkout_id: Annotated[str, "ID of the checkout."],
+    shipping_address: Annotated[AddressInput, "Shipping address details."],
+) -> dict[str, Any]:
+    """Update the shipping address for a checkout.
+    
+    Setting the shipping address is required before selecting a shipping method.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_shipping_address_update(
+            id=checkout_id, 
+            shippingAddress=shipping_address.model_dump(exclude_unset=True)
+        )
+        if data.checkoutShippingAddressUpdate.errors:
+            return {"errors": data.checkoutShippingAddressUpdate.errors}
+        return {"data": data.checkoutShippingAddressUpdate.checkout}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise
+
+@checkout_router.tool(
+    annotations={
+        "title": "Set Billing Address",
+    }
+)
+async def set_billing_address(
+    ctx: Context,
+    checkout_id: Annotated[str, "ID of the checkout."],
+    billing_address: Annotated[AddressInput, "Billing address details."],
+) -> dict[str, Any]:
+    """Update the billing address for a checkout."""
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_billing_address_update(
+            id=checkout_id, 
+            billingAddress=billing_address.model_dump(exclude_unset=True)
+        )
+        if data.checkoutBillingAddressUpdate.errors:
+            return {"errors": data.checkoutBillingAddressUpdate.errors}
+        return {"data": data.checkoutBillingAddressUpdate.checkout}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise
+
+@checkout_router.tool(
+    annotations={
+        "title": "Set Shipping Method",
+    }
+)
+async def set_shipping_method(
+    ctx: Context,
+    checkout_id: Annotated[str, "ID of the checkout."],
+    shipping_method_id: Annotated[str, "ID of the shipping method to select."],
+) -> dict[str, Any]:
+    """Select a shipping method for the checkout.
+    
+    Available shipping methods can be found using the 'get_checkout' tool 
+    after the shipping address has been set.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_shipping_method_update(
+            id=checkout_id, 
+            shippingMethodId=shipping_method_id
+        )
+        if data.checkoutShippingMethodUpdate.errors:
+            return {"errors": data.checkoutShippingMethodUpdate.errors}
+        return {"data": data.checkoutShippingMethodUpdate.checkout}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise
+
+@checkout_router.tool(
+    annotations={
+        "title": "Create Payment",
+    }
+)
+async def create_payment(
+    ctx: Context,
+    checkout_id: Annotated[str, "ID of the checkout."],
+    payment_input: Annotated[PaymentInput, "Payment details including gateway and token."],
+) -> dict[str, Any]:
+    """Create a payment for the checkout.
+    
+    A payment must be created and successful before the checkout can be completed.
+    For testing, you can often use a 'dummy' gateway if configured in Saleor.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_payment_create(
+            id=checkout_id, 
+            input=payment_input.model_dump(exclude_unset=True)
+        )
+        if data.checkoutPaymentCreate.errors:
+            return {"errors": data.checkoutPaymentCreate.errors}
+        return {"data": data.checkoutPaymentCreate.payment}
     except Exception as e:
         await ctx.error(str(e))
         raise
