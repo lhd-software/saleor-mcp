@@ -49,7 +49,7 @@ query ListProducts(
         }
         created
         updatedAt
-        thumbnail {
+        thumbnail(size: 64) {
           url
         }
         pricing {

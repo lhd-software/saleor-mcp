@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Saleor Product Explorer</title>
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>🛍 Saleor Explorer</h1>
+            <span id="cart-badge" class="badge">Cart: 0</span>
+        </header>
+        <div id="status-bar">Connecting...</div>
+        <div id="product-grid"></div>
+    </div>
+
+    <div id="detail-overlay" class="overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 id="detail-name">Product</h2>
+                <button class="close-btn" id="close-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="detail-desc" id="detail-desc"></div>
+                <div class="detail-price" id="detail-price"></div>
+                <div>
+                    <strong style="font-size:11px;">Variants:</strong>
+                    <div class="variant-list" id="variant-list"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="close-modal-2">Close</button>
+                <button class="btn-primary" id="add-cart-btn">Add to Cart</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./src/mcp-app.ts"></script>
+</body>
+</html>

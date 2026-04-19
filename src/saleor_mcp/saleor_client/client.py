@@ -753,7 +753,7 @@ class Client(AsyncBaseClient):
                     }
                     created
                     updatedAt
-                    thumbnail {
+                    thumbnail(size: 128) {
                       url
                     }
                     pricing {

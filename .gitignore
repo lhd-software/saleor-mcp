@@ -121,3 +121,16 @@ dmypy.json
 .uv/
 
 .vscode/
+.DS_Store
+
+# Node.js / Vite (ui-app)
+node_modules/
+**/node_modules/
+ui-app/dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.env*.local
+
+# Temporary / Scratch
+scratch/
