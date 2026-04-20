@@ -3,18 +3,114 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Saleor Product Explorer</title>
+    <title>BI193 Store</title>
 </head>
 <body>
     <div id="app">
+        <!-- Shared Header -->
         <header>
-            <h1>🛍 Saleor Explorer</h1>
-            <span id="cart-badge" class="badge">Cart: 0</span>
+            <h1 id="header-title">🛍 BI193 Store</h1>
+            <button id="cart-badge" class="badge" title="View Cart">Cart: 0</button>
         </header>
+
+        <!-- Breadcrumb Navigation -->
+        <nav id="breadcrumb" class="breadcrumb">
+            <span class="crumb active" data-view="products">Products</span>
+        </nav>
+
+        <!-- Status Bar -->
         <div id="status-bar">Connecting...</div>
-        <div id="product-grid"></div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: Products -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-products" class="view active">
+            <div id="product-grid"></div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: Cart -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-cart" class="view">
+            <div id="cart-lines"></div>
+            <div id="cart-summary" class="summary-box"></div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: Checkout -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-checkout" class="view">
+            <form id="checkout-form">
+                <fieldset id="shipping-fields">
+                    <legend>Shipping Address</legend>
+                    <div class="form-row">
+                        <input type="text" id="ship-firstName" placeholder="First name" required>
+                        <input type="text" id="ship-lastName" placeholder="Last name" required>
+                    </div>
+                    <input type="text" id="ship-street" placeholder="Street address" required>
+                    <div class="form-row">
+                        <input type="text" id="ship-city" placeholder="City" required>
+                        <input type="text" id="ship-postalCode" placeholder="Postal code" required>
+                    </div>
+                    <div class="form-row">
+                        <select id="ship-country" required>
+                            <option value="VN">Vietnam</option>
+                            <option value="US">United States</option>
+                            <option value="GB">United Kingdom</option>
+                        </select>
+                        <input type="tel" id="ship-phone" placeholder="Phone">
+                    </div>
+                </fieldset>
+
+                <label class="toggle-label">
+                    <input type="checkbox" id="same-billing" checked>
+                    Billing address is the same as shipping
+                </label>
+
+                <fieldset id="billing-fields" class="hidden">
+                    <legend>Billing Address</legend>
+                    <div class="form-row">
+                        <input type="text" id="bill-firstName" placeholder="First name">
+                        <input type="text" id="bill-lastName" placeholder="Last name">
+                    </div>
+                    <input type="text" id="bill-street" placeholder="Street address">
+                    <div class="form-row">
+                        <input type="text" id="bill-city" placeholder="City">
+                        <input type="text" id="bill-postalCode" placeholder="Postal code">
+                    </div>
+                    <select id="bill-country">
+                        <option value="VN">Vietnam</option>
+                        <option value="US">United States</option>
+                        <option value="GB">United Kingdom</option>
+                    </select>
+                </fieldset>
+
+                <fieldset id="shipping-methods">
+                    <legend>Shipping Method</legend>
+                    <div id="shipping-method-list" class="radio-group"></div>
+                </fieldset>
+
+                <div id="checkout-summary" class="summary-box"></div>
+                <button type="submit" class="btn-primary btn-full" id="pay-now-btn">Pay Now</button>
+            </form>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: Payment -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-payment" class="view">
+            <div id="payment-content"></div>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: Order -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-order" class="view">
+            <div id="order-content"></div>
+        </div>
     </div>
 
+    <!-- Product Detail Modal (shared overlay) -->
     <div id="detail-overlay" class="overlay">
         <div class="modal">
             <div class="modal-header">

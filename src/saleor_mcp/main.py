@@ -129,12 +129,124 @@ async def open_product_explorer(
         async with httpx.AsyncClient(follow_redirects=True) as http:
             await asyncio.gather(*[fetch_thumb(http, p) for p in products])
 
-        return {"products": products, "totalCount": len(products)}
+        return {"view": "products", "products": products, "totalCount": len(products)}
     except Exception as e:
         await ctx.error(str(e))
         return {"error": str(e), "products": []}
 
 
+def _serialize_checkout(checkout: object) -> dict:
+    """Normalize Saleor checkout object to flat dict for UI."""
+    c = checkout
+    lines = []
+    if hasattr(c, "lines") and c.lines:
+        for ln in c.lines:
+            line = {
+                "id": ln.id,
+                "quantity": ln.quantity,
+                "variantName": ln.variant.name if hasattr(ln, "variant") and ln.variant else "",
+            }
+            lines.append(line)
+    result: dict = {
+        "id": c.id,
+        "lines": lines,
+    }
+    if hasattr(c, "totalPrice") and c.totalPrice and c.totalPrice.gross:
+        result["total"] = {
+            "amount": float(c.totalPrice.gross.amount),
+            "currency": c.totalPrice.gross.currency,
+        }
+    if hasattr(c, "shippingAddress") and c.shippingAddress:
+        sa = c.shippingAddress
+        result["shippingAddress"] = {
+            "firstName": getattr(sa, "firstName", ""),
+            "lastName": getattr(sa, "lastName", ""),
+            "streetAddress1": getattr(sa, "streetAddress1", ""),
+            "streetAddress2": getattr(sa, "streetAddress2", ""),
+            "city": getattr(sa, "city", ""),
+            "postalCode": getattr(sa, "postalCode", ""),
+            "country": getattr(sa.country, "code", "VN") if hasattr(sa, "country") and sa.country else "VN",
+            "phone": getattr(sa, "phone", ""),
+        }
+    if hasattr(c, "availableShippingMethods") and c.availableShippingMethods:
+        result["shippingMethods"] = [
+            {"id": m.id, "name": m.name, "price": float(m.price.amount) if m.price else 0}
+            for m in c.availableShippingMethods
+        ]
+    if hasattr(c, "availablePaymentGateways") and c.availablePaymentGateways:
+        result["paymentGateways"] = [
+            {"id": g.id, "name": g.name} for g in c.availablePaymentGateways
+        ]
+    return result
+
+
+@mcp.tool(meta={"ui": {"resourceUri": RESOURCE_URI}})
+async def open_cart(
+    ctx: Context,
+    checkout_id: str,
+) -> dict:
+    """Open the cart UI showing current checkout lines, quantities, and totals.
+
+    Use this after adding items to cart to let the user review before checkout.
+    """
+    from saleor_mcp.ctx_utils import get_saleor_client
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_details(id=checkout_id)
+        if not data.checkout:
+            return {"view": "cart", "error": "Checkout not found"}
+        return {"view": "cart", "checkout": _serialize_checkout(data.checkout)}
+    except Exception as e:
+        await ctx.error(str(e))
+        return {"view": "cart", "error": str(e)}
+
+
+@mcp.tool(meta={"ui": {"resourceUri": RESOURCE_URI}})
+async def open_checkout(
+    ctx: Context,
+    checkout_id: str,
+    first_name: str = "",
+    last_name: str = "",
+    street_address: str = "",
+    city: str = "",
+    postal_code: str = "",
+    country: str = "VN",
+    phone: str = "",
+) -> dict:
+    """Open the checkout UI for address entry, shipping method selection, and payment.
+
+    Use this when the user is ready to proceed from cart to checkout.
+    IMPORTANT: If the user has mentioned their name, address, phone, or city in the
+    conversation, pass those values here to pre-fill the form automatically.
+    Examples:
+      - User says "tôi ở 123 Nguyễn Huệ, Q1, HCM" → street_address="123 Nguyễn Huệ", city="Ho Chi Minh"
+      - User says "tên tôi là Nguyễn Văn A" → first_name="Văn A", last_name="Nguyễn"
+      - User says "ship về VN" → country="VN"
+    """
+    from saleor_mcp.ctx_utils import get_saleor_client
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_details(id=checkout_id)
+        if not data.checkout:
+            return {"view": "checkout", "error": "Checkout not found"}
+        result = {"view": "checkout", "checkout": _serialize_checkout(data.checkout)}
+
+        # Pass any address info from Claude's conversation context
+        prefill = {}
+        if first_name: prefill["firstName"] = first_name
+        if last_name: prefill["lastName"] = last_name
+        if street_address: prefill["streetAddress1"] = street_address
+        if city: prefill["city"] = city
+        if postal_code: prefill["postalCode"] = postal_code
+        if country: prefill["country"] = country
+        if phone: prefill["phone"] = phone
+        if prefill:
+            result["prefillAddress"] = prefill
+
+        return result
+    except Exception as e:
+        await ctx.error(str(e))
+        return {"view": "checkout", "error": str(e)}
 
 
 
