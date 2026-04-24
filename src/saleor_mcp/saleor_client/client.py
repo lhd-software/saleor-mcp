@@ -9,6 +9,7 @@ from .checkout_billing_address_update import CheckoutBillingAddressUpdate
 from .checkout_complete import CheckoutComplete
 from .checkout_create import CheckoutCreate
 from .checkout_details import CheckoutDetails
+from .checkout_email_update import CheckoutEmailUpdate
 from .checkout_lines_add import CheckoutLinesAdd
 from .checkout_lines_delete import CheckoutLinesDelete
 from .checkout_lines_update import CheckoutLinesUpdate
@@ -259,6 +260,36 @@ class Client(AsyncBaseClient):
         )
         data = self.get_data(response)
         return CheckoutDetails.model_validate(data)
+
+    async def checkout_email_update(
+        self, id: str, email: str, **kwargs: Any
+    ) -> CheckoutEmailUpdate:
+        query = gql(
+            """
+            mutation CheckoutEmailUpdate($id: ID!, $email: String!) {
+              checkoutEmailUpdate(id: $id, email: $email) {
+                checkout {
+                  id
+                  email
+                }
+                errors {
+                  field
+                  message
+                  code
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"id": id, "email": email}
+        response = await self.execute(
+            query=query,
+            operation_name="CheckoutEmailUpdate",
+            variables=variables,
+            **kwargs
+        )
+        data = self.get_data(response)
+        return CheckoutEmailUpdate.model_validate(data)
 
     async def checkout_lines_add(
         self,
@@ -753,7 +784,7 @@ class Client(AsyncBaseClient):
                     }
                     created
                     updatedAt
-                    thumbnail(size: 128) {
+                    thumbnail(size: 64) {
                       url
                     }
                     pricing {

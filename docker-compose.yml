@@ -5,12 +5,19 @@ services:
       dockerfile: Dockerfile
     image: saleor-mcp:latest
     container_name: saleor-mcp
-    restart: unless-stopped
+    restart: always
     ports:
-      - "8001:8000"   # Nginx sẽ proxy store4ai-mcp.bi193.com → port 8001
+      - "8000:8000"
     environment:
       # Restrict chỉ cho phép domain bi193.com; bỏ trống để allow all
       ALLOWED_DOMAIN_PATTERN: "https:\\/\\/api\\.bi193\\.com\\/graphql\\/"
+      # Public URL where this server is reachable from the UI iframe. Used
+      # to rewrite thumbnail URLs through /img proxy and to set the UI CSP.
+      # Override to https://store4ai-mcp.bi193.com in production deploy.
+      PUBLIC_BASE_URL: "${PUBLIC_BASE_URL:-http://localhost:8000}"
+      # Hosts whose images the /img proxy is allowed to fetch. If blank,
+      # falls back to the host of SALEOR_API_URL.
+      ALLOWED_IMAGE_HOSTS: "${ALLOWED_IMAGE_HOSTS:-api.bi193.com}"
       # Optional: fallback nếu client không gửi headers
       # SALEOR_API_URL: "https://api.bi193.com/graphql/"
       # SALEOR_AUTH_TOKEN: "your_token_here"

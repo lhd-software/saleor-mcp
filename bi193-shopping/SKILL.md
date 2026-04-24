@@ -69,7 +69,7 @@ python scripts/check_mcp.py
 | Intent | Tool | Note |
 |---|---|---|
 | Tìm sản phẩm (khám phá) | `open_product_explorer` | UI, dùng cho đa số search |
-| Tìm sản phẩm (filter mạnh) | `products` | Giá, stock, sort |
+| Tìm sản phẩm (filter mạnh) | `products` | Giá, stock, sort, **ids**, **slugs** |
 | Chi tiết sản phẩm + variants | `get_product_details` | Size / variant / stock |
 | Kiểm tra tồn kho | `stocks` | "còn hàng không" |
 | Xem khuyến mãi | `list_promotions` | "có sale gì không" |
@@ -135,9 +135,11 @@ store4ai-mcp:products(
   search="dress",
   filter={stockAvailability: "IN_STOCK"},
   sort_by={field: "PRICE", direction: "ASC"},
+  ids=["..."], slugs=["..."],
   first=20
 )
 ```
+**Ưu tiên dùng `ids` hoặc `slugs`** khi user cung cấp danh sách cụ thể hoặc muốn so sánh các sản phẩm nhất định.
 Sau khi có kết quả text, TÓM TẮT ngắn gọn — không dump raw JSON.
 
 ### Fallback khi 0 kết quả

@@ -48,6 +48,12 @@ from .checkout_details import (
     CheckoutDetailsCheckoutTotalPrice,
     CheckoutDetailsCheckoutTotalPriceGross,
 )
+from .checkout_email_update import (
+    CheckoutEmailUpdate,
+    CheckoutEmailUpdateCheckoutEmailUpdate,
+    CheckoutEmailUpdateCheckoutEmailUpdateCheckout,
+    CheckoutEmailUpdateCheckoutEmailUpdateErrors,
+)
 from .checkout_lines_add import (
     CheckoutLinesAdd,
     CheckoutLinesAddCheckoutLinesAdd,
@@ -794,6 +800,10 @@ __all__ = [
     "CheckoutDetailsCheckoutShippingMethodsPrice",
     "CheckoutDetailsCheckoutTotalPrice",
     "CheckoutDetailsCheckoutTotalPriceGross",
+    "CheckoutEmailUpdate",
+    "CheckoutEmailUpdateCheckoutEmailUpdate",
+    "CheckoutEmailUpdateCheckoutEmailUpdateCheckout",
+    "CheckoutEmailUpdateCheckoutEmailUpdateErrors",
     "CheckoutErrorCode",
     "CheckoutFilterInput",
     "CheckoutLineInput",

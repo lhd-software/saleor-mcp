@@ -18,15 +18,6 @@
       }
     },
     "store4ai-mcp": {
-      "comment": "Custom MCP — đầy đủ: products, orders, checkout, promotions, customers, UI app.",
-      "type": "http",
-      "url": "https://store4ai-mcp.bi193.com/mcp",
-      "headers": {
-        "X-Saleor-API-URL": "https://api.bi193.com/graphql/",
-        "X-Saleor-Auth-Token": "iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
-      }
-    },
-    "store4ai-mcp-local": {
       "comment": "Local dev — chạy trực tiếp từ source code (stdio). Dùng khi đang phát triển.",
       "command": "uv",
       "args": [
@@ -37,7 +28,16 @@
       ],
       "env": {
         "SALEOR_API_URL": "https://api.bi193.com/graphql/",
-        "SALEOR_AUTH_TOKEN": "iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
+        "SALEOR_AUTH_TOKEN": "pmKtQyFPIGuRNTroIE5NlOY1Bi470k"
+      }
+    },
+    "store4ai-mcp-remote": {
+      "comment": "Custom MCP Remote — khi subdomain store4ai-mcp.bi193.com online.",
+      "type": "http",
+      "url": "https://store4ai-mcp.bi193.com/mcp",
+      "headers": {
+        "X-Saleor-API-URL": "https://api.bi193.com/graphql/",
+        "X-Saleor-Auth-Token": "pmKtQyFPIGuRNTroIE5NlOY1Bi470k"
       }
     }
   },

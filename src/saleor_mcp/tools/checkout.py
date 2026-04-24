@@ -173,6 +173,31 @@ async def get_checkout(
 
 @checkout_router.tool(
     annotations={
+        "title": "Set Checkout Email",
+    }
+)
+async def set_checkout_email(
+    ctx: Context,
+    checkout_id: Annotated[str, "ID of the checkout."],
+    email: Annotated[str, "Customer email address for the order."],
+) -> dict[str, Any]:
+    """Attach a customer email to the checkout.
+
+    Required before complete_checkout can succeed when the checkout was created
+    anonymously (no email). Collect the email as early as possible in the flow.
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.checkout_email_update(id=checkout_id, email=email)
+        if data.checkoutEmailUpdate.errors:
+            return {"errors": data.checkoutEmailUpdate.errors}
+        return {"data": data.checkoutEmailUpdate.checkout}
+    except Exception as e:
+        await ctx.error(str(e))
+        raise
+
+@checkout_router.tool(
+    annotations={
         "title": "Set Shipping Address",
     }
 )

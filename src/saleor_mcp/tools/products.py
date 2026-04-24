@@ -35,6 +35,8 @@ async def products(
     ] = None,
     sort_by: Annotated[ProductOrder | None, "Sort products by specific field"] = None,
     search: Annotated[str | None, "Search products with full-text search"] = None,
+    ids: Annotated[list[str] | None, "Filter products by specific IDs"] = None,
+    slugs: Annotated[list[str] | None, "Filter products by specific slugs"] = None,
     filter: Annotated[ProductFilterInput | None, "Advanced filtering options for products"] = None,
 ) -> dict[str, Any]:
     """Fetch list of products from Saleor GraphQL API.
@@ -50,7 +52,15 @@ async def products(
     """
 
     sort_by = sort_by.model_dump(exclude_unset=True) if sort_by else None
-    filter_data = filter.model_dump(exclude_unset=True) if filter else None
+    filter_data = filter.model_dump(exclude_unset=True) if filter else {}
+
+    if ids:
+        filter_data["ids"] = ids
+    if slugs:
+        filter_data["slug"] = {"oneOf": slugs}
+    
+    if not filter_data:
+        filter_data = None
 
     data = {}
     client = get_saleor_client()

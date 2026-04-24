@@ -1,7 +1,13 @@
+import os
+from urllib.parse import quote, urlparse
+
+import httpx
 from fastmcp import Context, FastMCP
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
+from fastmcp.tools.tool import ToolResult
+from mcp.types import TextContent
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.staticfiles import StaticFiles
 
 from saleor_mcp.docs import generate_html
@@ -14,6 +20,38 @@ from saleor_mcp.tools import (
     promotions_router,
     utils_router,
 )
+
+# Public URL at which this MCP server is reachable from the UI iframe.
+# UI thumbnail URLs are rewritten to flow through {PUBLIC_BASE_URL}/img?u=<saleor_url>
+# so Saleor's `content-disposition: attachment` header doesn't break inline <img> rendering.
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+
+
+def _allowed_image_hosts() -> set[str]:
+    """Hosts the image proxy will fetch from.
+
+    Priority: explicit ALLOWED_IMAGE_HOSTS env (comma-separated) → host of
+    SALEOR_API_URL env. Empty set means proxy refuses every URL.
+    """
+    explicit = os.getenv("ALLOWED_IMAGE_HOSTS", "").strip()
+    if explicit:
+        return {h.strip() for h in explicit.split(",") if h.strip()}
+    saleor_url = os.getenv("SALEOR_API_URL", "").strip()
+    if saleor_url:
+        host = urlparse(saleor_url).hostname
+        if host:
+            return {host}
+    return set()
+
+
+def _proxy_thumb_url(original_url: str | None) -> str | None:
+    """Rewrite a Saleor thumbnail URL to flow through this server's /img proxy."""
+    if not original_url:
+        return None
+    if original_url.startswith("data:") or original_url.startswith(PUBLIC_BASE_URL):
+        return original_url
+    return f"{PUBLIC_BASE_URL}/img?u={quote(original_url, safe='')}"
+
 
 mcp = FastMCP("Saleor MCP Server")
 mcp.add_middleware(DetailedTimingMiddleware())
@@ -33,7 +71,7 @@ RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
 @mcp.resource(
     RESOURCE_URI,
     mime_type=RESOURCE_MIME_TYPE,
-    meta={"ui": {"csp": {"resourceDomains": ["api.bi193.com"]}}},
+    meta={"ui": {"csp": {"resourceDomains": [PUBLIC_BASE_URL]}}},
 )
 async def product_explorer_ui() -> str:
     """The Product Explorer UI application (Vite-built single-file)."""
@@ -60,14 +98,11 @@ async def open_product_explorer(
     This tool renders a graphical product grid with thumbnails, prices, and variants.
     IMPORTANT: Always pass the 'search' parameter based on what the user is looking for.
     Examples:
-      - User wants shoes → search='shoes'
-      - User wants gifts for kids → search='kids'
-      - User wants hoodies → search='hoodie'
+      - User wants shoes -> search='shoes'
+      - User wants gifts for kids -> search='kids'
+      - User wants hoodies -> search='hoodie'
     Only omit search if user explicitly wants to see ALL products.
     """
-    import asyncio
-    import base64
-    import httpx
     from saleor_mcp.ctx_utils import get_saleor_client
 
     client = get_saleor_client()
@@ -93,7 +128,9 @@ async def open_product_explorer(
                 "description": getattr(node, "description", ""),
             }
             if hasattr(node, "thumbnail") and node.thumbnail:
-                product["thumbnail"] = {"url": node.thumbnail.url}
+                proxied = _proxy_thumb_url(node.thumbnail.url)
+                if proxied:
+                    product["thumbnail"] = {"url": proxied}
             if hasattr(node, "pricing") and node.pricing:
                 pr = node.pricing
                 if hasattr(pr, "priceRange") and pr.priceRange and pr.priceRange.start:
@@ -111,28 +148,35 @@ async def open_product_explorer(
                     ]
             products.append(product)
 
-        # Fetch all thumbnails in parallel → embed as base64 data URIs
-        # Needed because Claude Desktop's iframe sandbox blocks external image URLs (CSP)
-        async def fetch_thumb(http: httpx.AsyncClient, p: dict) -> None:
-            thumb = p.get("thumbnail")
-            if not thumb or not thumb.get("url") or thumb["url"].startswith("data:"):
-                return
-            try:
-                resp = await http.get(thumb["url"], timeout=5.0)
-                if resp.status_code == 200:
-                    ct = resp.headers.get("content-type", "image/jpeg").split(";")[0]
-                    b64 = base64.b64encode(resp.content).decode()
-                    p["thumbnail"] = {"url": f"data:{ct};base64,{b64}"}
-            except Exception:
-                pass
-
-        async with httpx.AsyncClient(follow_redirects=True) as http:
-            await asyncio.gather(*[fetch_thumb(http, p) for p in products])
-
-        return {"view": "products", "products": products, "totalCount": len(products)}
+        # Split UI payload (rich, with base64 thumbnails) from LLM content
+        # (lightweight summary). Thumbnails can be ~100KB each; embedding them
+        # in the LLM context bloats it past the request limit.
+        summary_lines = [
+            f"- {p['name']} (id={p['id']}, slug={p.get('slug','')}, "
+            f"price={p.get('pricing',{}).get('amount','?')} "
+            f"{p.get('pricing',{}).get('currency','')}, "
+            f"variants={len(p.get('variants', []))})"
+            for p in products
+        ]
+        summary = (
+            f"Opened product explorer UI with {len(products)} product(s)"
+            + (f" matching '{search}'." if search else ".")
+            + ("\n" + "\n".join(summary_lines) if summary_lines else "")
+        )
+        return ToolResult(
+            content=[TextContent(type="text", text=summary)],
+            structured_content={
+                "view": "products",
+                "products": products,
+                "totalCount": len(products),
+            },
+        )
     except Exception as e:
         await ctx.error(str(e))
-        return {"error": str(e), "products": []}
+        return ToolResult(
+            content=[TextContent(type="text", text=f"Error: {e}")],
+            structured_content={"view": "products", "error": str(e), "products": []},
+        )
 
 
 def _serialize_checkout(checkout: object) -> dict:
@@ -141,16 +185,41 @@ def _serialize_checkout(checkout: object) -> dict:
     lines = []
     if hasattr(c, "lines") and c.lines:
         for ln in c.lines:
-            line = {
-                "id": ln.id,
-                "quantity": ln.quantity,
-                "variantName": ln.variant.name if hasattr(ln, "variant") and ln.variant else "",
-            }
-            lines.append(line)
+            # Safely extract variant and product info
+            variant = getattr(ln, "variant", None)
+            product = getattr(variant, "product", None) if variant else None
+            
+            v_name = getattr(variant, "name", "") or ""
+            p_name = getattr(product, "name", "") or ""
+
+            # Saleor sometimes echoes the variant ID in `name` — hide it in that case.
+            v_id = getattr(variant, "id", "") if variant else ""
+            if v_name and v_name == v_id:
+                v_name = ""
+
+            display_name = p_name if p_name else "Product"
+
+            thumb_url = None
+            if product and hasattr(product, "thumbnail") and product.thumbnail:
+                raw_thumb = getattr(product.thumbnail, "url", None)
+                thumb_url = _proxy_thumb_url(raw_thumb)
+
+            lines.append({
+                "id": getattr(ln, "id", ""),
+                "quantity": getattr(ln, "quantity", 0),
+                "variantName": v_name,
+                "productName": display_name,
+                "thumbnail": thumb_url,
+            })
     result: dict = {
-        "id": c.id,
+        "id": getattr(c, "id", ""),
+        "email": getattr(c, "email", "") or "",
         "lines": lines,
     }
+    # Currently selected shipping method, if any
+    delivery = getattr(c, "deliveryMethod", None)
+    if delivery is not None:
+        result["selectedShippingMethodId"] = getattr(delivery, "id", "")
     if hasattr(c, "totalPrice") and c.totalPrice and c.totalPrice.gross:
         result["total"] = {
             "amount": float(c.totalPrice.gross.amount),
@@ -219,9 +288,9 @@ async def open_checkout(
     IMPORTANT: If the user has mentioned their name, address, phone, or city in the
     conversation, pass those values here to pre-fill the form automatically.
     Examples:
-      - User says "tôi ở 123 Nguyễn Huệ, Q1, HCM" → street_address="123 Nguyễn Huệ", city="Ho Chi Minh"
-      - User says "tên tôi là Nguyễn Văn A" → first_name="Văn A", last_name="Nguyễn"
-      - User says "ship về VN" → country="VN"
+      - User says "tôi ở 123 Nguyễn Huệ, Q1, HCM" -> street_address="123 Nguyễn Huệ", city="Ho Chi Minh"
+      - User says "tên tôi là Nguyễn Văn A" -> first_name="Văn A", last_name="Nguyễn"
+      - User says "ship về VN" -> country="VN"
     """
     from saleor_mcp.ctx_utils import get_saleor_client
     client = get_saleor_client()
@@ -255,6 +324,46 @@ async def open_checkout(
 @mcp.custom_route("/health", methods=["GET"])
 async def health_check(request: Request):
     return JSONResponse({"status": "healthy"})
+
+
+@mcp.custom_route("/img", methods=["GET"])
+async def proxy_image(request: Request):
+    """Proxy whitelisted upstream image URLs.
+
+    Why: Saleor serves thumbnails with `content-disposition: attachment`, which
+    Claude Desktop's sandboxed iframe treats as a forced download and refuses
+    to render inline via <img>. We refetch and re-serve without that header
+    (and with a generous cache so the host can cache by URL).
+    """
+    url = request.query_params.get("u", "")
+    if not url or not (url.startswith("http://") or url.startswith("https://")):
+        return JSONResponse({"error": "invalid url"}, status_code=400)
+    host = urlparse(url).hostname
+    allowed = _allowed_image_hosts()
+    if not host or host not in allowed:
+        return JSONResponse(
+            {"error": "host not allowed", "host": host, "allowed": sorted(allowed)},
+            status_code=403,
+        )
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as http:
+            upstream = await http.get(url)
+    except Exception as e:
+        return JSONResponse({"error": f"upstream fetch failed: {e}"}, status_code=502)
+    if upstream.status_code != 200:
+        return JSONResponse(
+            {"error": "upstream error", "status": upstream.status_code},
+            status_code=502,
+        )
+    content_type = upstream.headers.get("content-type", "image/jpeg").split(";")[0]
+    return Response(
+        content=upstream.content,
+        media_type=content_type,
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+        },
+    )
 
 
 app = mcp.http_app(stateless_http=True)

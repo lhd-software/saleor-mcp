@@ -68,6 +68,7 @@ button { padding: 7px 14px; border-radius: 8px; border: none; font-weight: 600; 
 .cart-line-price { font-weight: 700; color: var(--primary); font-size: 13px; }
 .qty-controls { display: flex; align-items: center; gap: 6px; }
 .qty-btn { width: 26px; height: 26px; border-radius: 6px; display: flex; align-items: center; justify-content: center; padding: 0; font-size: 14px; }
+.qty-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .qty-val { font-weight: 700; font-size: 13px; min-width: 20px; text-align: center; }
 .summary-box { background: var(--card-bg); border-radius: var(--radius); box-shadow: var(--shadow); padding: 14px; margin-top: 14px; }
 .summary-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; }
@@ -80,7 +81,8 @@ input, select { width: 100%; padding: 8px 10px; border: 1px solid #e2e8f0; borde
 .toggle-label input { width: auto; margin: 0; }
 .radio-group label { display: flex; align-items: center; gap: 8px; padding: 8px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 6px; cursor: pointer; font-size: 13px; }
 .radio-group input { width: auto; margin: 0; }
-.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: white; padding: 8px 20px; border-radius: 20px; font-size: 13px; font-weight: 600; z-index: 200; animation: fadeInUp 0.3s ease-out; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--success); color: white; padding: 8px 20px; border-radius: 20px; font-size: 13px; font-weight: 600; z-index: 200; animation: fadeInUp 0.3s ease-out; max-width: 90vw; text-align: center; }
+.toast.error { background: var(--danger); }
 @keyframes fadeInUp { from { opacity: 0; transform: translateX(-50%) translateY(10px); } to { opacity: 1; transform: translateX(-50%) translateY(0); } }
 `;
 document.head.appendChild(style);
@@ -99,10 +101,20 @@ interface CartItem {
 
 type ViewName = "products" | "cart" | "checkout" | "payment" | "order";
 
-const cart: CartItem[] = [];
-let currentView: ViewName = "products";
+const cart: CartItem[] = JSON.parse(localStorage.getItem("mcp_cart") || "[]");
 let selectedVariantId: string | null = null;
-let currentCheckoutId: string | null = null;
+let currentCheckoutId: string | null = localStorage.getItem("mcp_checkout_id");
+const currentChannel = "default-channel";
+
+function saveCart() {
+  localStorage.setItem("mcp_cart", JSON.stringify(cart));
+}
+
+function saveCheckoutId(id: string | null) {
+  currentCheckoutId = id;
+  if (id) localStorage.setItem("mcp_checkout_id", id);
+  else localStorage.removeItem("mcp_checkout_id");
+}
 
 // ═══════════════════════════════════════════════════
 // DOM refs
@@ -117,7 +129,6 @@ const breadcrumb = document.getElementById("breadcrumb")!;
 // Router
 // ═══════════════════════════════════════════════════
 function showView(name: ViewName) {
-  currentView = name;
   document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
   document.getElementById(`view-${name}`)?.classList.add("active");
   updateBreadcrumb(name);
@@ -146,9 +157,9 @@ function updateBreadcrumb(active: ViewName) {
 // ═══════════════════════════════════════════════════
 // Toast notification
 // ═══════════════════════════════════════════════════
-function showToast(msg: string, duration = 1500) {
+function showToast(msg: string, duration = 1500, isError = false) {
   const t = document.createElement("div");
-  t.className = "toast";
+  t.className = "toast" + (isError ? " error" : "");
   t.textContent = msg;
   document.body.appendChild(t);
   setTimeout(() => t.remove(), duration);
@@ -162,23 +173,162 @@ function updateCartBadge() {
   cartBadge.textContent = `Cart: ${total}`;
 }
 
-function addToCart(product: Product, variantId: string, variantName: string) {
-  const existing = cart.find(i => i.variantId === variantId);
-  if (existing) {
-    existing.quantity++;
-  } else {
-    cart.push({ product, variantId, variantName, quantity: 1 });
-  }
-  updateCartBadge();
-  showToast(`✓ ${product.name} added`);
-}
-
 // ═══════════════════════════════════════════════════
 // MCP App
 // ═══════════════════════════════════════════════════
-const app = new App({ name: "BI193 Store", version: "2.0.0" });
+const app = new App({ name: "BI193 Store", version: "2.1.0" });
 app.onerror = console.error;
 
+async function callTool(name: string, args: Record<string, any>): Promise<any> {
+  const res: any = await app.callServerTool({ name, arguments: args });
+  return res.structuredContent ?? res;
+}
+
+// Saleor/MCP errors often carry a `field` (e.g. "postalCode"). Surface that
+// so the user knows *which* field was rejected instead of "invalid".
+const FIELD_LABELS: Record<string, string> = {
+  firstName: "First name",
+  lastName: "Last name",
+  streetAddress1: "Street address",
+  streetAddress2: "Street address (line 2)",
+  city: "City",
+  cityArea: "District/area",
+  postalCode: "Postal code",
+  country: "Country",
+  countryArea: "State/province",
+  phone: "Phone",
+  email: "Email",
+};
+
+function extractErrors(resData: any): string | null {
+  if (!resData) return null;
+  const errs = resData.errors || resData.data?.errors;
+  if (errs && errs.length > 0) {
+    const e = errs[0];
+    const label = e.field ? (FIELD_LABELS[e.field] || e.field) : null;
+    const msg = e.message || e.code || "Server error";
+    return label ? `${label}: ${msg}` : msg;
+  }
+  if (resData.error) return resData.error;
+  return null;
+}
+
+function fieldFromErrors(resData: any): string | null {
+  if (!resData) return null;
+  const errs = resData.errors || resData.data?.errors;
+  return errs && errs.length > 0 ? (errs[0].field || null) : null;
+}
+
+const FIELD_TO_INPUT_ID: Record<string, string> = {
+  firstName: "ship-firstName",
+  lastName: "ship-lastName",
+  streetAddress1: "ship-street",
+  city: "ship-city",
+  postalCode: "ship-postalCode",
+  country: "ship-country",
+  phone: "ship-phone",
+  email: "ship-email",
+};
+
+function highlightField(fieldName: string | null) {
+  // Clear previous highlights
+  for (const id of Object.values(FIELD_TO_INPUT_ID)) {
+    const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+    if (el) el.style.borderColor = "";
+  }
+  if (!fieldName) return;
+  const id = FIELD_TO_INPUT_ID[fieldName];
+  if (!id) return;
+  const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
+  if (el) {
+    el.style.borderColor = "var(--danger)";
+    el.focus();
+  }
+}
+
+// ═══════════════════════════════════════════════════
+// Cart sync (UI → Saleor server tools)
+// ═══════════════════════════════════════════════════
+async function serverAddToCart(variantId: string, quantity: number): Promise<void> {
+  if (!currentCheckoutId) {
+    const res = await callTool("create_cart", {
+      channel: currentChannel,
+      lines: [{ variantId, quantity }],
+    });
+    const err = extractErrors(res);
+    if (err) throw new Error(err);
+    const id = res.data?.id;
+    if (!id) throw new Error("create_cart returned no id");
+    saveCheckoutId(id);
+  } else {
+    const res = await callTool("add_to_cart", {
+      checkout_id: currentCheckoutId,
+      lines: [{ variantId, quantity }],
+    });
+    const err = extractErrors(res);
+    if (err) throw new Error(err);
+  }
+}
+
+async function serverUpdateCartItem(lineId: string, quantity: number): Promise<void> {
+  if (!currentCheckoutId) return;
+  const res = await callTool("update_cart_item", {
+    checkout_id: currentCheckoutId,
+    lines: [{ lineId, quantity }],
+  });
+  const err = extractErrors(res);
+  if (err) throw new Error(err);
+}
+
+async function serverRemoveCartLine(lineId: string): Promise<void> {
+  if (!currentCheckoutId) return;
+  const res = await callTool("remove_from_cart", {
+    checkout_id: currentCheckoutId,
+    line_ids: [lineId],
+  });
+  const err = extractErrors(res);
+  if (err) throw new Error(err);
+}
+
+async function fetchServerCart(): Promise<any | null> {
+  if (!currentCheckoutId) return null;
+  const res = await callTool("open_cart", { checkout_id: currentCheckoutId });
+  if (res.error) throw new Error(res.error);
+  return res.checkout || null;
+}
+
+function addToCart(product: Product, variantId: string, variantName: string) {
+  // Optimistic local update (for badge responsiveness)
+  const existing = cart.find(i => i.variantId === variantId);
+  if (existing) existing.quantity++;
+  else cart.push({ product, variantId, variantName, quantity: 1 });
+  saveCart();
+  updateCartBadge();
+  showToast(`✓ ${product.name} added`);
+
+  // Sync to Saleor server tool
+  serverAddToCart(variantId, 1).catch((err: Error) => {
+    console.error("serverAddToCart failed:", err);
+    showToast(`❌ ${err.message || "Add to cart failed"}`, 3000, true);
+    // Revert optimistic change
+    const item = cart.find(i => i.variantId === variantId);
+    if (item) {
+      item.quantity--;
+      if (item.quantity <= 0) {
+        const idx = cart.indexOf(item);
+        if (idx >= 0) cart.splice(idx, 1);
+      }
+      saveCart();
+      updateCartBadge();
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════
+// Host → UI callbacks
+// ═══════════════════════════════════════════════════
+// This UI does not register any host-callable tools, so we only listen for
+// server tool results and mirror them into the appropriate view.
 app.ontoolresult = (result: any) => {
   console.info("Tool result:", result);
   const sc = result.structuredContent;
@@ -186,6 +336,11 @@ app.ontoolresult = (result: any) => {
     processContentArray(result.content);
     return;
   }
+
+  // Capture checkout_id whenever server-side tools return it
+  if (sc.checkout?.id) saveCheckoutId(sc.checkout.id);
+  if (sc.data?.id && sc.data.lines !== undefined) saveCheckoutId(sc.data.id);
+
   switch (sc.view) {
     case "products":
       showView("products");
@@ -209,7 +364,6 @@ app.ontoolresult = (result: any) => {
       renderOrderView(sc.order);
       break;
     default:
-      // Legacy: no view field — assume products
       if (sc.products && Array.isArray(sc.products)) {
         showView("products");
         renderProducts(sc.products as Product[]);
@@ -220,6 +374,7 @@ app.ontoolresult = (result: any) => {
 
 app.connect().then(() => {
   statusBar.textContent = "⏳ Loading products...";
+  updateCartBadge();
 }).catch((err: any) => {
   console.error("Connect failed:", err);
   statusBar.textContent = "❌ Connect failed: " + err.message;
@@ -347,6 +502,29 @@ function showDetail(product: Product) {
 // ═══════════════════════════════════════════════════
 // Render: Cart View
 // ═══════════════════════════════════════════════════
+function renderCartView(checkout?: any) {
+  if (checkout) {
+    if (checkout.id) saveCheckoutId(checkout.id);
+    // Reset local cart to mirror server (so badge + fallback stay accurate)
+    if (Array.isArray(checkout.lines)) {
+      cart.length = 0;
+      for (const line of checkout.lines) {
+        cart.push({
+          product: { id: "", name: line.productName || "Product" },
+          variantId: "",
+          variantName: line.variantName || "",
+          quantity: line.quantity || 0,
+        });
+      }
+      saveCart();
+      updateCartBadge();
+    }
+    renderCartFromCheckout(checkout);
+    return;
+  }
+  renderCartFromLocal();
+}
+
 function renderCartFromLocal() {
   const cartLines = document.getElementById("cart-lines")!;
   const cartSummary = document.getElementById("cart-summary")!;
@@ -387,6 +565,7 @@ function renderCartFromLocal() {
 
     line.querySelector(".qty-plus")!.addEventListener("click", () => {
       item.quantity++;
+      saveCart();
       updateCartBadge();
       renderCartFromLocal();
     });
@@ -396,6 +575,7 @@ function renderCartFromLocal() {
         const idx = cart.indexOf(item);
         if (idx >= 0) cart.splice(idx, 1);
       }
+      saveCart();
       updateCartBadge();
       renderCartFromLocal();
     });
@@ -408,52 +588,108 @@ function renderCartFromLocal() {
     <div class="summary-row summary-total"><span>Total</span><span>$${subtotal.toFixed(2)} ${currency}</span></div>
     <button class="btn-primary btn-full" id="checkout-btn">Proceed to Checkout</button>
   `;
-  document.getElementById("checkout-btn")!.addEventListener("click", async () => {
-    const btn = document.getElementById("checkout-btn")! as HTMLButtonElement;
-    btn.textContent = "Creating checkout...";
-    btn.disabled = true;
-
-    try {
-      // Create Saleor checkout with local cart items
-      const lines = cart.map(item => ({ variantId: item.variantId, quantity: item.quantity }));
-      const result = await app.callServerTool({
-        name: "create_cart",
-        arguments: { channel: "default-channel", lines },
-      });
-      const sc = (result as any).structuredContent;
-      const data = sc?.data || sc;
-      if (data?.id) {
-        currentCheckoutId = data.id;
-        showView("checkout");
-        renderCheckoutView(data);
-        statusBar.textContent = "📋 Fill in your details";
-      } else {
-        btn.textContent = "Retry";
-        btn.disabled = false;
-        statusBar.textContent = "❌ Checkout creation failed";
-      }
-    } catch (err: any) {
-      console.error("create_cart failed:", err);
-      btn.textContent = "Retry";
-      btn.disabled = false;
-      statusBar.textContent = "❌ " + err.message;
-    }
-  });
+  document.getElementById("checkout-btn")!.addEventListener("click", () => goToCheckout());
 }
 
-function renderCartView(checkout?: any) {
-  if (checkout) {
-    // If Saleor checkout data provided, could render from that
-    // For now, still use local cart
-    if (checkout.id) currentCheckoutId = checkout.id;
+function renderCartFromCheckout(checkout: any) {
+  const cartLines = document.getElementById("cart-lines")!;
+  const cartSummary = document.getElementById("cart-summary")!;
+  cartLines.innerHTML = "";
+
+  if (!checkout.lines || checkout.lines.length === 0) {
+    cartLines.innerHTML = '<div class="loading">Your cart is empty.</div>';
+    cartSummary.innerHTML = "";
+    return;
   }
-  renderCartFromLocal();
+
+  for (const line of checkout.lines) {
+    const el = document.createElement("div");
+    el.className = "cart-line";
+    const imgUrl = line.thumbnail;
+    el.innerHTML = `
+      ${imgUrl ? `<img class="cart-line-img" src="${imgUrl}" alt="${line.productName}">` : '<div class="cart-line-img" style="display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-muted);">No img</div>'}
+      <div class="cart-line-info">
+        <div class="cart-line-name">${line.productName}</div>
+        <div class="cart-line-variant">${line.variantName || ""}</div>
+      </div>
+      <div class="qty-controls">
+        <button class="btn-secondary qty-btn qty-minus">−</button>
+        <span class="qty-val">${line.quantity}</span>
+        <button class="btn-secondary qty-btn qty-plus">+</button>
+      </div>
+    `;
+    const plusBtn = el.querySelector(".qty-plus") as HTMLButtonElement;
+    const minusBtn = el.querySelector(".qty-minus") as HTMLButtonElement;
+    plusBtn.addEventListener("click", () => changeQty(line.id, line.quantity + 1, [plusBtn, minusBtn]));
+    minusBtn.addEventListener("click", () => changeQty(line.id, line.quantity - 1, [plusBtn, minusBtn]));
+    cartLines.appendChild(el);
+  }
+
+  const total = checkout.total || { amount: 0, currency: "USD" };
+  cartSummary.innerHTML = `
+    <div class="summary-row summary-total"><span>Total</span><span>$${total.amount.toFixed(2)} ${total.currency}</span></div>
+    <button class="btn-primary btn-full" id="checkout-btn">Proceed to Checkout</button>
+  `;
+  document.getElementById("checkout-btn")!.addEventListener("click", () => goToCheckout());
+}
+
+async function changeQty(lineId: string, newQty: number, buttons: HTMLButtonElement[]) {
+  buttons.forEach(b => b.disabled = true);
+  statusBar.textContent = "🔄 Updating cart...";
+  try {
+    if (newQty <= 0) {
+      await serverRemoveCartLine(lineId);
+    } else {
+      await serverUpdateCartItem(lineId, newQty);
+    }
+    const checkout = await fetchServerCart();
+    if (checkout) {
+      renderCartView(checkout);
+      statusBar.textContent = "🛒 Cart updated";
+    } else {
+      renderCartFromLocal();
+    }
+  } catch (err: any) {
+    console.error("changeQty failed:", err);
+    showToast(`❌ ${err.message || "Update failed"}`, 3000, true);
+    statusBar.textContent = "❌ Update failed";
+    buttons.forEach(b => b.disabled = false);
+  }
+}
+
+async function goToCheckout() {
+  if (!currentCheckoutId) {
+    // No server checkout yet → ask Claude to create one from local cart
+    statusBar.textContent = "🔄 Requesting checkout from Claude...";
+    await app.sendMessage({
+      role: "user",
+      content: [{
+        type: "text",
+        text: `Tôi muốn thanh toán các sản phẩm trong giỏ hàng: ${cart.map(i => `${i.quantity}x ${i.variantName || i.product.name}`).join(", ")}. Hãy tạo checkout.`,
+      }],
+    });
+    return;
+  }
+  showView("checkout");
+  statusBar.textContent = "📋 Loading checkout...";
+  try {
+    const res = await callTool("open_checkout", { checkout_id: currentCheckoutId });
+    const checkout = res.checkout;
+    const lastAddr = JSON.parse(localStorage.getItem("mcp_last_address") || "null");
+    renderCheckoutView(checkout, lastAddr);
+    statusBar.textContent = "📋 Enter shipping details";
+  } catch (err: any) {
+    console.error("goToCheckout failed:", err);
+    showToast(`❌ ${err.message || "Load checkout failed"}`, 3000, true);
+    statusBar.textContent = "❌ Load checkout failed";
+  }
 }
 
 // ═══════════════════════════════════════════════════
 // Render: Checkout View
 // ═══════════════════════════════════════════════════
 function renderCheckoutView(checkout?: any, prefillAddress?: any) {
+  if (checkout?.id) saveCheckoutId(checkout.id);
   const summary = document.getElementById("checkout-summary")!;
   let subtotal = 0;
   let currency = "USD";
@@ -468,12 +704,16 @@ function renderCheckoutView(checkout?: any, prefillAddress?: any) {
     }
   }
 
-  // Pre-fill address fields — priority: prefillAddress > existing shippingAddress > empty
-  const addr = prefillAddress || checkout?.shippingAddress || {};
+  // Priority: explicit prefill from tool > existing shippingAddress > last saved > empty
+  const lastSaved = JSON.parse(localStorage.getItem("mcp_last_address") || "null");
+  const addr = prefillAddress || checkout?.shippingAddress || lastSaved || {};
   const setVal = (id: string, val: string) => {
     const el = document.getElementById(id) as HTMLInputElement | HTMLSelectElement | null;
     if (el && val) el.value = val;
   };
+  // Email priority: server checkout.email > last used > empty
+  const savedEmail = localStorage.getItem("mcp_last_email") || "";
+  setVal("ship-email", checkout?.email || savedEmail || "");
   setVal("ship-firstName", addr.firstName || "");
   setVal("ship-lastName", addr.lastName || "");
   setVal("ship-street", addr.streetAddress1 || "");
@@ -482,23 +722,32 @@ function renderCheckoutView(checkout?: any, prefillAddress?: any) {
   setVal("ship-country", addr.country || "VN");
   setVal("ship-phone", addr.phone || "");
 
-  // Render shipping methods if available
+  // Render shipping methods — auto-select previously chosen, else the first one
   const methodList = document.getElementById("shipping-method-list")!;
   methodList.innerHTML = "";
-  if (checkout?.shippingMethods && checkout.shippingMethods.length > 0) {
-    for (const m of checkout.shippingMethods) {
+  const methods = checkout?.shippingMethods || [];
+  const preselected = checkout?.selectedShippingMethodId
+    || (methods.length > 0 ? methods[0].id : null);
+  if (methods.length > 0) {
+    for (const m of methods) {
+      const checked = m.id === preselected ? "checked" : "";
       const label = document.createElement("label");
-      label.innerHTML = `<input type="radio" name="shipping-method" value="${m.id}"> ${m.name} — $${m.price.toFixed(2)}`;
+      label.innerHTML = `<input type="radio" name="shipping-method" value="${m.id}" ${checked}> ${m.name} — $${m.price.toFixed(2)}`;
       methodList.appendChild(label);
     }
   } else {
-    methodList.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Set shipping address first to see available methods</div>';
+    methodList.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">Save address first to see shipping options</div>';
   }
 
   summary.innerHTML = `
     <div class="summary-row"><span>Items (${cart.reduce((s, i) => s + i.quantity, 0)})</span><span>$${subtotal.toFixed(2)} ${currency}</span></div>
     <div class="summary-row summary-total"><span>Total</span><span>$${subtotal.toFixed(2)} ${currency}</span></div>
   `;
+
+  // Dynamic button label: first click saves address; second click (with method chosen) pays.
+  const payBtn = document.getElementById("pay-now-btn") as HTMLButtonElement;
+  payBtn.disabled = false;
+  payBtn.textContent = methods.length > 0 ? "Confirm & Pay" : "Save Address";
 }
 
 // ═══════════════════════════════════════════════════
@@ -561,9 +810,23 @@ detailOverlay.addEventListener("click", (e) => {
   if (e.target === detailOverlay) detailOverlay.style.display = "none";
 });
 
-// Cart badge → open cart view
-cartBadge.addEventListener("click", () => {
+// Cart badge → open cart view (always sync from server first)
+cartBadge.addEventListener("click", async () => {
   showView("cart");
+  if (currentCheckoutId) {
+    statusBar.textContent = "🛒 Loading cart...";
+    try {
+      const checkout = await fetchServerCart();
+      if (checkout) {
+        renderCartView(checkout);
+        statusBar.textContent = `🛒 ${checkout.lines?.length || 0} lines`;
+        return;
+      }
+    } catch (err: any) {
+      console.error("fetchServerCart failed:", err);
+      showToast(`❌ ${err.message || "Load cart failed"}`, 3000, true);
+    }
+  }
   renderCartFromLocal();
   statusBar.textContent = `🛒 ${cart.reduce((s, i) => s + i.quantity, 0)} items in cart`;
 });
@@ -574,69 +837,109 @@ document.getElementById("same-billing")?.addEventListener("change", (e) => {
   billingFields.classList.toggle("hidden", (e.target as HTMLInputElement).checked);
 });
 
-// Checkout form submit → call Saleor APIs
+// Checkout form submit → call Saleor server tools directly (no natural language)
 document.getElementById("checkout-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   if (!currentCheckoutId) {
     statusBar.textContent = "❌ No checkout ID";
+    showToast("❌ Không có checkout. Hãy thêm sản phẩm vào giỏ trước.", 3000, true);
     return;
   }
 
-  const payBtn = document.getElementById("pay-now-btn")! as HTMLButtonElement;
-  payBtn.textContent = "Processing...";
+  highlightField(null); // clear any previous error highlighting
+
+  const email = (document.getElementById("ship-email") as HTMLInputElement).value.trim();
+  const shippingAddress: Record<string, any> = {
+    firstName: (document.getElementById("ship-firstName") as HTMLInputElement).value,
+    lastName: (document.getElementById("ship-lastName") as HTMLInputElement).value,
+    streetAddress1: (document.getElementById("ship-street") as HTMLInputElement).value,
+    city: (document.getElementById("ship-city") as HTMLInputElement).value,
+    postalCode: (document.getElementById("ship-postalCode") as HTMLInputElement).value,
+    country: (document.getElementById("ship-country") as HTMLSelectElement).value,
+  };
+  const phone = (document.getElementById("ship-phone") as HTMLInputElement).value;
+  if (phone) shippingAddress.phone = phone;
+
+  // Persist for next checkout (survives session)
+  localStorage.setItem("mcp_last_address", JSON.stringify(shippingAddress));
+  if (email) localStorage.setItem("mcp_last_email", email);
+
+  const sameBilling = (document.getElementById("same-billing") as HTMLInputElement).checked;
+  const billingAddress: Record<string, any> = sameBilling ? { ...shippingAddress } : {
+    firstName: (document.getElementById("bill-firstName") as HTMLInputElement).value,
+    lastName: (document.getElementById("bill-lastName") as HTMLInputElement).value,
+    streetAddress1: (document.getElementById("bill-street") as HTMLInputElement).value,
+    city: (document.getElementById("bill-city") as HTMLInputElement).value,
+    postalCode: (document.getElementById("bill-postalCode") as HTMLInputElement).value,
+    country: (document.getElementById("bill-country") as HTMLSelectElement).value,
+  };
+
+  const selectedMethod = (document.querySelector('input[name="shipping-method"]:checked') as HTMLInputElement | null)?.value;
+  const payBtn = document.getElementById("pay-now-btn") as HTMLButtonElement;
   payBtn.disabled = true;
 
+  const runStep = async (
+    stepLabel: string,
+    name: string,
+    args: Record<string, any>,
+  ) => {
+    statusBar.textContent = `🔄 ${stepLabel}...`;
+    const res = await callTool(name, args);
+    const errMsg = extractErrors(res);
+    if (errMsg) {
+      highlightField(fieldFromErrors(res));
+      throw new Error(errMsg);
+    }
+    return res;
+  };
+
   try {
-    // 1. Set shipping address
-    const shippingAddress = {
-      firstName: (document.getElementById("ship-firstName") as HTMLInputElement).value,
-      lastName: (document.getElementById("ship-lastName") as HTMLInputElement).value,
-      streetAddress1: (document.getElementById("ship-street") as HTMLInputElement).value,
-      city: (document.getElementById("ship-city") as HTMLInputElement).value,
-      postalCode: (document.getElementById("ship-postalCode") as HTMLInputElement).value,
-      country: (document.getElementById("ship-country") as HTMLSelectElement).value,
-      phone: (document.getElementById("ship-phone") as HTMLInputElement).value || undefined,
-    };
-
-    await app.callServerTool({
-      name: "set_shipping_address",
-      arguments: { checkout_id: currentCheckoutId, shipping_address: shippingAddress },
-    });
-
-    // 2. Set billing address
-    const sameBilling = (document.getElementById("same-billing") as HTMLInputElement).checked;
-    const billingAddress = sameBilling ? shippingAddress : {
-      firstName: (document.getElementById("bill-firstName") as HTMLInputElement).value,
-      lastName: (document.getElementById("bill-lastName") as HTMLInputElement).value,
-      streetAddress1: (document.getElementById("bill-street") as HTMLInputElement).value,
-      city: (document.getElementById("bill-city") as HTMLInputElement).value,
-      postalCode: (document.getElementById("bill-postalCode") as HTMLInputElement).value,
-      country: (document.getElementById("bill-country") as HTMLSelectElement).value,
-    };
-
-    await app.callServerTool({
-      name: "set_billing_address",
-      arguments: { checkout_id: currentCheckoutId, billing_address: billingAddress },
-    });
-
-    // 3. Set shipping method if selected
-    const selectedMethod = document.querySelector('input[name="shipping-method"]:checked') as HTMLInputElement | null;
-    if (selectedMethod) {
-      await app.callServerTool({
-        name: "set_shipping_method",
-        arguments: { checkout_id: currentCheckoutId, shipping_method_id: selectedMethod.value },
+    if (email) {
+      await runStep("Saving email", "set_checkout_email", {
+        checkout_id: currentCheckoutId,
+        email,
       });
     }
 
-    // 4. Navigate to payment
-    showView("payment");
-    statusBar.textContent = "💳 Complete your payment";
-    renderPaymentView();
+    await runStep("Saving shipping address", "set_shipping_address", {
+      checkout_id: currentCheckoutId,
+      shipping_address: shippingAddress,
+    });
 
+    await runStep("Saving billing address", "set_billing_address", {
+      checkout_id: currentCheckoutId,
+      billing_address: billingAddress,
+    });
+
+    if (!selectedMethod) {
+      // First submit: just save addresses, re-render to expose shipping method options.
+      statusBar.textContent = "🔄 Loading shipping methods...";
+      const r3 = await callTool("open_checkout", { checkout_id: currentCheckoutId });
+      renderCheckoutView(r3.checkout);
+      statusBar.textContent = "📋 Confirm shipping method and click Pay Now";
+      payBtn.disabled = false;
+      return;
+    }
+
+    await runStep("Setting shipping method", "set_shipping_method", {
+      checkout_id: currentCheckoutId,
+      shipping_method_id: selectedMethod,
+    });
+
+    statusBar.textContent = "💬 Asking Claude to finalize payment...";
+    await app.sendMessage({
+      role: "user",
+      content: [{
+        type: "text",
+        text:
+          "Tôi đã điền xong thông tin giao hàng trên form. Tiếp tục giúp tôi thanh toán "
+          + "(chọn payment gateway, xác nhận tổng tiền, rồi hoàn tất đơn).",
+      }],
+    });
   } catch (err: any) {
-    console.error("Checkout submit failed:", err);
-    payBtn.textContent = "Retry";
+    console.error("Checkout flow failed:", err);
+    showToast(`❌ ${err.message || "Checkout failed"}`, 4000, true);
+    statusBar.textContent = "❌ " + (err.message || "Failed");
     payBtn.disabled = false;
-    statusBar.textContent = "❌ " + err.message;
   }
 });
