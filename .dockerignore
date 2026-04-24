@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+*.egg-info/
+
+# Dev tools
+.git/
+.github/
+.claude/
+scratch/
+
+# Skill files (local only, not part of server)
+bi193-shopping/
+bi193-shopping.skill
+
+# Config files (sensitive, not for image)
+claude_desktop_config.json
+mcp_config.json
+
+# Docs
+docs/
+*.md
+!README.md
+
+# Node (ui-app được build ở stage riêng)
+ui-app/node_modules/
+ui-app/src/
+
+# Misc
+.DS_Store
+*.log

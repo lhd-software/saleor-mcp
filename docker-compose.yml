@@ -1,0 +1,31 @@
+services:
+  saleor-mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: saleor-mcp:latest
+    container_name: saleor-mcp
+    restart: unless-stopped
+    ports:
+      - "8001:8000"   # Nginx sẽ proxy store4ai-mcp.bi193.com → port 8001
+    environment:
+      # Restrict chỉ cho phép domain bi193.com; bỏ trống để allow all
+      ALLOWED_DOMAIN_PATTERN: "https:\\/\\/api\\.bi193\\.com\\/graphql\\/"
+      # Optional: fallback nếu client không gửi headers
+      # SALEOR_API_URL: "https://api.bi193.com/graphql/"
+      # SALEOR_AUTH_TOKEN: "your_token_here"
+      LOGLEVEL: "INFO"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    # Nếu dùng chung network với saleor-core:
+    # networks:
+    #   - saleor_network
+
+# networks:
+#   saleor_network:
+#     external: true
+#     name: saleor_saleor  # Tên network của saleor-core (kiểm tra bằng: docker network ls)

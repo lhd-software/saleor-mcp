@@ -8,7 +8,26 @@
       ],
       "env": {}
     },
-    "saleor-mcp": {
+    "saleor-mcp-origin": {
+      "comment": "Bản gốc Saleor MCP — chỉ đọc (products, orders). Dùng khi cần test với Saleor Cloud.",
+      "type": "http",
+      "url": "https://mcp.saleor.app/mcp",
+      "headers": {
+        "X-Saleor-API-URL": "https://api.bi193.com/graphql/",
+        "X-Saleor-Auth-Token": "iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
+      }
+    },
+    "store4ai-mcp": {
+      "comment": "Custom MCP — đầy đủ: products, orders, checkout, promotions, customers, UI app.",
+      "type": "http",
+      "url": "https://store4ai-mcp.bi193.com/mcp",
+      "headers": {
+        "X-Saleor-API-URL": "https://api.bi193.com/graphql/",
+        "X-Saleor-Auth-Token": "iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
+      }
+    },
+    "store4ai-mcp-local": {
+      "comment": "Local dev — chạy trực tiếp từ source code (stdio). Dùng khi đang phát triển.",
       "command": "uv",
       "args": [
         "--directory",
