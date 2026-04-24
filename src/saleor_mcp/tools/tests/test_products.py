@@ -290,7 +290,7 @@ async def test_warehouse_details_with_saleor_error(mock_saleor_config):
 
 @pytest.mark.asyncio
 async def test_get_product_details(sample_product_details_response, mock_saleor_config):
-    """Test fetching product details."""
+    """Test fetching product details via the UI-routed tool."""
     with (
         patch("saleor_mcp.ctx_utils.get_config_from_headers") as mock_get_config,
         patch.object(SaleorClient, "product_details") as mock_product_details,
@@ -303,7 +303,10 @@ async def test_get_product_details(sample_product_details_response, mock_saleor_
                 "get_product_details", {"slug": "blue-hoodie"}
             )
 
-        data = result.data["data"]
-        assert data["name"] == "Blue Hoodie"
-        assert len(data["variants"]) == 1
+        # Tool returns a ToolResult: {view: "detail", product: {...}}
+        sc = result.structured_content
+        assert sc["view"] == "detail"
+        product = sc["product"]
+        assert product["name"] == "Blue Hoodie"
+        assert len(product["variants"]) == 1
         mock_product_details.assert_called_once()

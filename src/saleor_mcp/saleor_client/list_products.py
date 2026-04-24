@@ -68,6 +68,20 @@ class ListProductsProductsEdgesNodeProductVariantsEdgesNode(BaseModel):
     id: str
     name: str
     sku: Optional[str]
+    pricing: Optional["ListProductsProductsEdgesNodeProductVariantsEdgesNodePricing"]
+
+
+class ListProductsProductsEdgesNodeProductVariantsEdgesNodePricing(BaseModel):
+    price: Optional["ListProductsProductsEdgesNodeProductVariantsEdgesNodePricingPrice"]
+
+
+class ListProductsProductsEdgesNodeProductVariantsEdgesNodePricingPrice(BaseModel):
+    gross: "ListProductsProductsEdgesNodeProductVariantsEdgesNodePricingPriceGross"
+
+
+class ListProductsProductsEdgesNodeProductVariantsEdgesNodePricingPriceGross(BaseModel):
+    amount: float
+    currency: str
 
 
 class ListProductsProductsEdgesNodeThumbnail(BaseModel):
@@ -107,6 +121,9 @@ ListProductsProductsEdges.model_rebuild()
 ListProductsProductsEdgesNode.model_rebuild()
 ListProductsProductsEdgesNodeProductVariants.model_rebuild()
 ListProductsProductsEdgesNodeProductVariantsEdges.model_rebuild()
+ListProductsProductsEdgesNodeProductVariantsEdgesNode.model_rebuild()
+ListProductsProductsEdgesNodeProductVariantsEdgesNodePricing.model_rebuild()
+ListProductsProductsEdgesNodeProductVariantsEdgesNodePricingPrice.model_rebuild()
 ListProductsProductsEdgesNodePricing.model_rebuild()
 ListProductsProductsEdgesNodePricingPriceRange.model_rebuild()
 ListProductsProductsEdgesNodePricingPriceRangeStart.model_rebuild()

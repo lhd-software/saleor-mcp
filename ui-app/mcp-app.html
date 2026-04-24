@@ -29,6 +29,26 @@
         </div>
 
         <!-- ═══════════════════════════════════════ -->
+        <!-- VIEW: Product Detail -->
+        <!-- ═══════════════════════════════════════ -->
+        <div id="view-detail" class="view">
+            <div id="detail-image-wrap" class="detail-image-wrap" style="display:none;">
+                <img id="detail-image" alt="">
+            </div>
+            <div class="detail-hero">
+                <h2 id="detail-name" style="font-size:16px;margin-bottom:4px;"></h2>
+                <div class="detail-price" id="detail-price"></div>
+                <div id="detail-sku" style="font-size:11px;color:var(--text-muted);margin-top:-4px;margin-bottom:8px;"></div>
+            </div>
+            <div class="detail-desc" id="detail-desc"></div>
+            <div style="margin-top:12px;">
+                <strong style="font-size:11px;">Variants:</strong>
+                <div class="variant-list" id="variant-list"></div>
+            </div>
+            <button type="button" class="btn-primary btn-full" id="add-cart-btn">Add to Cart</button>
+        </div>
+
+        <!-- ═══════════════════════════════════════ -->
         <!-- VIEW: Cart -->
         <!-- ═══════════════════════════════════════ -->
         <div id="view-cart" class="view">
@@ -111,28 +131,6 @@
         <!-- ═══════════════════════════════════════ -->
         <div id="view-order" class="view">
             <div id="order-content"></div>
-        </div>
-    </div>
-
-    <!-- Product Detail Modal (shared overlay) -->
-    <div id="detail-overlay" class="overlay">
-        <div class="modal">
-            <div class="modal-header">
-                <h2 id="detail-name">Product</h2>
-                <button class="close-btn" id="close-modal">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="detail-desc" id="detail-desc"></div>
-                <div class="detail-price" id="detail-price"></div>
-                <div>
-                    <strong style="font-size:11px;">Variants:</strong>
-                    <div class="variant-list" id="variant-list"></div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" id="close-modal-2">Close</button>
-                <button class="btn-primary" id="add-cart-btn">Add to Cart</button>
-            </div>
         </div>
     </div>
 

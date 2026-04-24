@@ -44,12 +44,20 @@ query ListProducts(
               id
               name
               sku
+              pricing {
+                price {
+                  gross {
+                    amount
+                    currency
+                  }
+                }
+              }
             }
           }
         }
         created
         updatedAt
-        thumbnail(size: 64) {
+        thumbnail(size: 512) {
           url
         }
         pricing {

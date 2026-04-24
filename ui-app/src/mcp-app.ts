@@ -55,6 +55,8 @@ button { padding: 7px 14px; border-radius: 8px; border: none; font-weight: 600; 
 .variant-list { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
 .variant-btn { font-size: 11px; padding: 4px 8px; }
 .variant-btn.active { background: var(--primary); color: white; }
+.detail-image-wrap { width: 100%; height: 260px; background: #f1f5f9; border-radius: 10px; overflow: hidden; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; }
+.detail-image-wrap img { width: 100%; height: 100%; object-fit: cover; }
 .detail-desc { color: var(--text-muted); font-size: 12px; line-height: 1.5; margin: 6px 0; max-height: 80px; overflow-y: auto; }
 .detail-price { font-size: 18px; font-weight: 800; color: var(--primary); margin: 8px 0; }
 .close-btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 0 4px; color: var(--text-muted); }
@@ -90,16 +92,22 @@ document.head.appendChild(style);
 // ═══════════════════════════════════════════════════
 // Types & State
 // ═══════════════════════════════════════════════════
+interface Variant {
+  id: string;
+  name: string;
+  sku?: string;
+  pricing?: { amount: number; currency: string };
+}
 interface Product {
   id: string; name: string; slug?: string; description?: string;
   thumbnail?: { url: string }; pricing?: { amount: number; currency: string };
-  variants?: { id: string; name: string }[];
+  variants?: Variant[];
 }
 interface CartItem {
   product: Product; variantId: string; variantName: string; quantity: number;
 }
 
-type ViewName = "products" | "cart" | "checkout" | "payment" | "order";
+type ViewName = "products" | "detail" | "cart" | "checkout" | "payment" | "order";
 
 const cart: CartItem[] = JSON.parse(localStorage.getItem("mcp_cart") || "[]");
 let selectedVariantId: string | null = null;
@@ -121,7 +129,6 @@ function saveCheckoutId(id: string | null) {
 // ═══════════════════════════════════════════════════
 const statusBar = document.getElementById("status-bar")!;
 const productGrid = document.getElementById("product-grid")!;
-const detailOverlay = document.getElementById("detail-overlay")!;
 const cartBadge = document.getElementById("cart-badge")!;
 const breadcrumb = document.getElementById("breadcrumb")!;
 
@@ -134,9 +141,9 @@ function showView(name: ViewName) {
   updateBreadcrumb(name);
 }
 
-const CRUMB_ORDER: ViewName[] = ["products", "cart", "checkout", "payment", "order"];
+const CRUMB_ORDER: ViewName[] = ["products", "detail", "cart", "checkout", "payment", "order"];
 const CRUMB_LABELS: Record<ViewName, string> = {
-  products: "Products", cart: "Cart", checkout: "Checkout", payment: "Payment", order: "Order"
+  products: "Products", detail: "Detail", cart: "Cart", checkout: "Checkout", payment: "Payment", order: "Order"
 };
 
 function updateBreadcrumb(active: ViewName) {
@@ -250,24 +257,19 @@ function highlightField(fieldName: string | null) {
 // Cart sync (UI → Saleor server tools)
 // ═══════════════════════════════════════════════════
 async function serverAddToCart(variantId: string, quantity: number): Promise<void> {
-  if (!currentCheckoutId) {
-    const res = await callTool("create_cart", {
-      channel: currentChannel,
-      lines: [{ variantId, quantity }],
-    });
-    const err = extractErrors(res);
-    if (err) throw new Error(err);
-    const id = res.data?.id;
-    if (!id) throw new Error("create_cart returned no id");
-    saveCheckoutId(id);
+  const args: Record<string, any> = { lines: [{ variantId, quantity }] };
+  if (currentCheckoutId) {
+    args.checkout_id = currentCheckoutId;
   } else {
-    const res = await callTool("add_to_cart", {
-      checkout_id: currentCheckoutId,
-      lines: [{ variantId, quantity }],
-    });
-    const err = extractErrors(res);
-    if (err) throw new Error(err);
+    args.channel = currentChannel;
   }
+  const res = await callTool("add_to_cart", args);
+  const err = extractErrors(res);
+  if (err) throw new Error(err);
+  const id = res.data?.id;
+  if (id && !currentCheckoutId) saveCheckoutId(id);
+  // Fire-and-forget: keep Claude's context in sync with the UI cart.
+  void syncCartToModelContext();
 }
 
 async function serverUpdateCartItem(lineId: string, quantity: number): Promise<void> {
@@ -295,6 +297,65 @@ async function fetchServerCart(): Promise<any | null> {
   const res = await callTool("open_cart", { checkout_id: currentCheckoutId });
   if (res.error) throw new Error(res.error);
   return res.checkout || null;
+}
+
+// Push the current cart state into Claude's model context so the chat knows
+// about items added via the UI without polluting the conversation with tool
+// calls. Each call overwrites the previous snapshot (spec-guaranteed).
+//
+// IMPORTANT: we only push when this iframe actually holds a checkout_id.
+// Fresh iframes (one spawns per tool call, each in its own blob origin
+// without shared localStorage) would otherwise wipe the context set by an
+// earlier iframe to "no cart" just because they themselves haven't seen
+// the user add anything. The `current_checkout` server tool is the canonical
+// fallback Claude uses when context is missing.
+async function syncCartToModelContext(
+  opts: { force?: boolean } = {},
+): Promise<void> {
+  try {
+    if (!currentCheckoutId) {
+      if (!opts.force) return;
+      await app.updateModelContext({
+        content: [{
+          type: "text",
+          text: "UI cart state: no active checkout (last cart was completed or cleared).",
+        }],
+      });
+      return;
+    }
+    const co = await fetchServerCart();
+    if (!co) return;
+    const lines = (co.lines || []) as Array<{
+      quantity: number; productName: string; variantName?: string;
+    }>;
+    const lineList = lines.length
+      ? lines.map(l =>
+          `- ${l.quantity}× ${l.productName}${l.variantName ? ` (${l.variantName})` : ""}`
+        ).join("\n")
+      : "(empty)";
+    const total = co.total
+      ? `${co.total.amount.toFixed(2)} ${co.total.currency}`
+      : "—";
+    const md = [
+      "---",
+      `checkout_id: ${currentCheckoutId}`,
+      `line_count: ${lines.length}`,
+      `total: ${total}`,
+      "---",
+      "",
+      "UI cart state (user's active Saleor checkout, maintained by the mcp-app UI):",
+      "",
+      lineList,
+      "",
+      "To inspect or modify this cart from chat, use `open_cart` / `update_cart_item` / ",
+      "`remove_from_cart` with the `checkout_id` above.",
+    ].join("\n");
+    await app.updateModelContext({
+      content: [{ type: "text", text: md }],
+    });
+  } catch (e) {
+    console.error("syncCartToModelContext failed:", e);
+  }
 }
 
 function addToCart(product: Product, variantId: string, variantName: string) {
@@ -331,6 +392,9 @@ function addToCart(product: Product, variantId: string, variantName: string) {
 // server tool results and mirror them into the appropriate view.
 app.ontoolresult = (result: any) => {
   console.info("Tool result:", result);
+  // Reset visibility on each result — a prior empty-products render may have hidden us.
+  document.body.style.display = "";
+
   const sc = result.structuredContent;
   if (!sc) {
     processContentArray(result.content);
@@ -343,13 +407,25 @@ app.ontoolresult = (result: any) => {
 
   switch (sc.view) {
     case "products":
+      // If the tool returned no products, collapse the iframe so the chat
+      // doesn't show an empty BI193 Store card. The LLM's text summary
+      // handles the "no results" messaging on its own.
+      if (!sc.products || sc.products.length === 0) {
+        document.body.style.display = "none";
+        return;
+      }
       showView("products");
       renderProducts(sc.products as Product[]);
-      statusBar.textContent = `✅ ${sc.products?.length || 0} products loaded`;
+      statusBar.textContent = `✅ ${sc.products.length} products loaded`;
       break;
     case "cart":
       showView("cart");
       renderCartView(sc.checkout);
+      break;
+    case "detail":
+      // Open the detail modal on top of the products view.
+      showView("products");
+      if (sc.product) showDetail(sc.product as Product);
       break;
     case "checkout":
       showView("checkout");
@@ -365,6 +441,10 @@ app.ontoolresult = (result: any) => {
       break;
     default:
       if (sc.products && Array.isArray(sc.products)) {
+        if (sc.products.length === 0) {
+          document.body.style.display = "none";
+          return;
+        }
         showView("products");
         renderProducts(sc.products as Product[]);
         statusBar.textContent = `✅ ${sc.products.length} products loaded`;
@@ -375,6 +455,9 @@ app.ontoolresult = (result: any) => {
 app.connect().then(() => {
   statusBar.textContent = "⏳ Loading products...";
   updateCartBadge();
+  // On connect, push whatever cart state persists across UI reloads into
+  // Claude's context so a fresh chat turn still knows about the user's cart.
+  void syncCartToModelContext();
 }).catch((err: any) => {
   console.error("Connect failed:", err);
   statusBar.textContent = "❌ Connect failed: " + err.message;
@@ -430,11 +513,19 @@ function renderProducts(products: Product[]) {
     card.querySelector(".product-img")!.addEventListener("click", () => showDetail(p));
     card.querySelector(".product-info")!.addEventListener("click", () => showDetail(p));
 
-    // Click Add to Cart button → quick add (first variant or product id)
+    // Click Add to Cart button:
+    //  - if the product has multiple variants, user MUST pick one → open detail modal
+    //  - if one (or none), add directly
     card.querySelector(".btn-cart-sm")!.addEventListener("click", (e) => {
       e.stopPropagation();
-      const vid = p.variants?.[0]?.id || p.id;
-      const vname = p.variants?.[0]?.name || "Default";
+      const variants = p.variants || [];
+      if (variants.length > 1) {
+        showDetail(p);
+        return;
+      }
+      const only = variants[0];
+      const vid = only?.id || p.id;
+      const vname = only?.name || "Default";
       addToCart(p, vid, vname);
     });
 
@@ -445,58 +536,112 @@ function renderProducts(products: Product[]) {
 // ═══════════════════════════════════════════════════
 // Product Detail Modal
 // ═══════════════════════════════════════════════════
+function formatPrice(pricing?: { amount: number; currency: string }): string {
+  if (!pricing) return "N/A";
+  return `$${pricing.amount.toFixed(2)} ${pricing.currency}`;
+}
+
 function showDetail(product: Product) {
   document.getElementById("detail-name")!.textContent = product.name;
 
-  let desc = product.description || "No description";
+  // Image (if product has a thumbnail)
+  const imgWrap = document.getElementById("detail-image-wrap")!;
+  const imgEl = document.getElementById("detail-image") as HTMLImageElement;
+  if (product.thumbnail?.url) {
+    imgEl.src = product.thumbnail.url;
+    imgEl.alt = product.name;
+    imgWrap.style.display = "flex";
+  } else {
+    imgEl.removeAttribute("src");
+    imgWrap.style.display = "none";
+  }
+
+  // Description may be EditorJS JSON, or a raw HTML string, or plain text.
+  // Strip HTML tags (Saleor often inlines <b>/<i> in paragraph text).
+  const htmlToPlain = (s: string) => {
+    const tmp = document.createElement("div");
+    tmp.innerHTML = s;
+    return (tmp.textContent || "").trim();
+  };
+  let desc = product.description || "";
   try {
     const parsed = JSON.parse(desc);
-    if (parsed.blocks) desc = parsed.blocks.map((b: any) => b.data?.text || "").join("\n");
-  } catch { /* use as-is */ }
+    if (parsed?.blocks) {
+      desc = parsed.blocks.map((b: any) => b?.data?.text || "").join("\n");
+    }
+  } catch { /* not JSON — treat as HTML/text */ }
+  desc = htmlToPlain(desc);
   document.getElementById("detail-desc")!.textContent = desc || "No description";
 
-  const price = product.pricing ? `$${product.pricing.amount.toFixed(2)} ${product.pricing.currency}` : "N/A";
-  document.getElementById("detail-price")!.textContent = price;
+  const priceEl = document.getElementById("detail-price")!;
+  const skuEl = document.getElementById("detail-sku")!;
+
+  const variants = product.variants || [];
+
+  // Update price + SKU display based on the currently selected variant.
+  // Falls back to the product's price range when no variant is picked.
+  const refreshForVariant = (v: Variant | null) => {
+    if (v) {
+      priceEl.textContent = formatPrice(v.pricing || product.pricing);
+      skuEl.textContent = v.sku ? `SKU: ${v.sku}` : "";
+    } else {
+      priceEl.textContent = formatPrice(product.pricing);
+      skuEl.textContent = "";
+    }
+  };
 
   const variantList = document.getElementById("variant-list")!;
   variantList.innerHTML = "";
   selectedVariantId = null;
 
-  const variants = product.variants || [];
   if (variants.length > 0) {
     selectedVariantId = variants[0].id;
     for (let i = 0; i < variants.length; i++) {
       const v = variants[i];
       const btn = document.createElement("button");
       btn.className = "btn-secondary variant-btn" + (i === 0 ? " active" : "");
-      btn.textContent = v.name || "Default";
+      // Show variant name + its own price if distinct from product display
+      const priceTxt = v.pricing ? ` · $${v.pricing.amount.toFixed(2)}` : "";
+      btn.textContent = `${v.name || "Default"}${priceTxt}`;
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
         selectedVariantId = v.id;
         variantList.querySelectorAll(".variant-btn").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
+        refreshForVariant(v);
       });
       variantList.appendChild(btn);
     }
+    refreshForVariant(variants[0]);
   } else {
     selectedVariantId = product.id;
     variantList.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Default variant</span>';
+    refreshForVariant(null);
   }
 
   const addBtn = document.getElementById("add-cart-btn")! as HTMLButtonElement;
   addBtn.textContent = "Add to Cart";
   addBtn.disabled = false;
-  addBtn.className = "btn-primary";
+  addBtn.className = "btn-primary btn-full";
   addBtn.onclick = () => {
     const vid = selectedVariantId || product.id;
     const vname = variants.find(v => v.id === vid)?.name || "Default";
-    addToCart(product, vid, vname);
+    // Sync the product's pricing to the picked variant's price for the local
+    // cart line so the subtotal reflects the actual variant.
+    const pickedVariant = variants.find(v => v.id === vid);
+    const productForCart: Product = pickedVariant?.pricing
+      ? { ...product, pricing: pickedVariant.pricing }
+      : product;
+    addToCart(productForCart, vid, vname);
     addBtn.textContent = "✓ Added!";
     addBtn.className = "btn-success";
-    setTimeout(() => { detailOverlay.style.display = "none"; }, 500);
+    setTimeout(() => {
+      addBtn.textContent = "Add to Cart";
+      addBtn.className = "btn-primary btn-full";
+    }, 800);
   };
 
-  detailOverlay.style.display = "flex";
+  showView("detail");
 }
 
 // ═══════════════════════════════════════════════════
@@ -649,6 +794,7 @@ async function changeQty(lineId: string, newQty: number, buttons: HTMLButtonElem
     } else {
       renderCartFromLocal();
     }
+    void syncCartToModelContext();
   } catch (err: any) {
     console.error("changeQty failed:", err);
     showToast(`❌ ${err.message || "Update failed"}`, 3000, true);
@@ -808,16 +954,6 @@ function renderOrderView(order?: any) {
 // ═══════════════════════════════════════════════════
 // Event listeners
 // ═══════════════════════════════════════════════════
-document.getElementById("close-modal")!.addEventListener("click", () => {
-  detailOverlay.style.display = "none";
-});
-document.getElementById("close-modal-2")!.addEventListener("click", () => {
-  detailOverlay.style.display = "none";
-});
-detailOverlay.addEventListener("click", (e) => {
-  if (e.target === detailOverlay) detailOverlay.style.display = "none";
-});
-
 // Cart badge → open cart view (always sync from server first)
 cartBadge.addEventListener("click", async () => {
   showView("cart");
@@ -909,18 +1045,15 @@ document.getElementById("checkout-form")?.addEventListener("submit", async (e) =
       });
     }
 
-    await runStep("Saving shipping address", "set_shipping_address", {
-      checkout_id: currentCheckoutId,
-      shipping_address: shippingAddress,
-    });
-
-    await runStep("Saving billing address", "set_billing_address", {
-      checkout_id: currentCheckoutId,
-      billing_address: billingAddress,
-    });
-
+    // Step 1: set shipping + billing + (optionally) shipping method in one call
     if (!selectedMethod) {
-      // First submit: just save addresses, re-render to expose shipping method options.
+      await runStep("Saving delivery info", "set_checkout_delivery", {
+        checkout_id: currentCheckoutId,
+        shipping_address: shippingAddress,
+        billing_address: sameBilling ? undefined : billingAddress,
+        same_billing: sameBilling,
+      });
+      // Shipping methods become available only after an address is set.
       statusBar.textContent = "🔄 Loading shipping methods...";
       const r3 = await callTool("open_checkout", { checkout_id: currentCheckoutId });
       renderCheckoutView(r3.checkout);
@@ -929,8 +1062,11 @@ document.getElementById("checkout-form")?.addEventListener("submit", async (e) =
       return;
     }
 
-    await runStep("Setting shipping method", "set_shipping_method", {
+    await runStep("Saving delivery info", "set_checkout_delivery", {
       checkout_id: currentCheckoutId,
+      shipping_address: shippingAddress,
+      billing_address: sameBilling ? undefined : billingAddress,
+      same_billing: sameBilling,
       shipping_method_id: selectedMethod,
     });
 
@@ -943,24 +1079,17 @@ document.getElementById("checkout-form")?.addEventListener("submit", async (e) =
     }
     const gateway = gateways[0];
 
-    // Some gateways require a token even for sandbox/dummy use. Saleor's
-    // built-in dummy expects a status token (e.g. "charged") to simulate a
-    // successful capture. For real gateways we'd collect this via their SDK.
-    const paymentInput: Record<string, any> = { gateway: gateway.id };
-    if (gateway.id === "mirumee.payments.dummy") paymentInput.token = "charged";
-
-    await runStep(`Creating payment via ${gateway.name}`, "create_payment", {
+    // Step 2: create payment + complete order in one call.
+    // Saleor's built-in dummy gateway needs a status token ('charged' = success).
+    statusBar.textContent = `🔄 Placing order via ${gateway.name}...`;
+    const placeRes = await callTool("place_order", {
       checkout_id: currentCheckoutId,
-      payment_input: paymentInput,
+      gateway_id: gateway.id,
+      token: gateway.id === "mirumee.payments.dummy" ? "charged" : undefined,
     });
-
-    statusBar.textContent = "🔄 Placing order...";
-    const completeRes = await callTool("complete_checkout", {
-      checkout_id: currentCheckoutId,
-    });
-    const completeErr = extractErrors(completeRes);
-    if (completeErr) throw new Error(completeErr);
-    const order = completeRes.data;
+    const placeErr = extractErrors(placeRes);
+    if (placeErr) throw new Error(placeErr);
+    const order = placeRes.data;
     if (!order?.id) throw new Error("Order could not be created");
 
     // Checkout has become an order — reset local cart/checkout state
@@ -969,6 +1098,8 @@ document.getElementById("checkout-form")?.addEventListener("submit", async (e) =
     cart.length = 0;
     saveCart();
     updateCartBadge();
+    // Tell Claude the cart is now empty (checkout was converted to an order).
+    void syncCartToModelContext({ force: true });
 
     showView("order");
     renderOrderView(order);

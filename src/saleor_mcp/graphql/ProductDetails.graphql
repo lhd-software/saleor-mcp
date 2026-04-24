@@ -7,6 +7,9 @@ query ProductDetails($id: ID, $slug: String, $channel: String) {
     category {
       name
     }
+    thumbnail(size: 1024) {
+      url
+    }
     media {
       url
       alt

@@ -18,7 +18,7 @@ query CheckoutDetails($id: ID!) {
         product {
           id
           name
-          thumbnail(size: 64) {
+          thumbnail(size: 256) {
             url
           }
         }

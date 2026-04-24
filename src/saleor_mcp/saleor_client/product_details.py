@@ -16,12 +16,17 @@ class ProductDetailsProduct(BaseModel):
     slug: str
     description: Optional[Any]
     category: Optional["ProductDetailsProductCategory"]
+    thumbnail: Optional["ProductDetailsProductThumbnail"]
     media: Optional[List["ProductDetailsProductMedia"]]
     variants: Optional[List["ProductDetailsProductVariants"]]
 
 
 class ProductDetailsProductCategory(BaseModel):
     name: str
+
+
+class ProductDetailsProductThumbnail(BaseModel):
+    url: str
 
 
 class ProductDetailsProductMedia(BaseModel):

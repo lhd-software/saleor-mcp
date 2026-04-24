@@ -4,9 +4,10 @@ from fastmcp import Client as MCPClient
 from saleor_mcp.main import mcp
 from saleor_mcp.saleor_client.client import Client as SaleorClient
 
+
 @pytest.mark.asyncio
-async def test_create_cart(sample_checkout_response, mock_saleor_config):
-    """Test creating a cart."""
+async def test_add_to_cart_creates_new(sample_checkout_response, mock_saleor_config):
+    """Calling add_to_cart without checkout_id creates a new cart."""
     with (
         patch("saleor_mcp.ctx_utils.get_config_from_headers") as mock_get_config,
         patch.object(SaleorClient, "checkout_create") as mock_checkout_create,
@@ -16,8 +17,12 @@ async def test_create_cart(sample_checkout_response, mock_saleor_config):
 
         async with MCPClient(mcp) as mcp_client:
             result = await mcp_client.call_tool(
-                "create_cart", 
-                {"channel": "default-channel", "email": "test@example.com"}
+                "add_to_cart",
+                {
+                    "lines": [{"variantId": "UHJvZHVjdFZhcmlhbnQ6MQ==", "quantity": 1}],
+                    "channel": "default-channel",
+                    "email": "test@example.com",
+                },
             )
 
         data = result.data["data"]

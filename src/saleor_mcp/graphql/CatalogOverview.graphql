@@ -1,0 +1,33 @@
+query CatalogOverview($channel: String!) {
+  categories(level: 0, first: 20) {
+    edges {
+      node {
+        id
+        slug
+        name
+        products(first: 3, channel: $channel) {
+          totalCount
+          edges {
+            node {
+              id
+              name
+              slug
+            }
+          }
+        }
+      }
+    }
+  }
+  collections(first: 10, channel: $channel) {
+    edges {
+      node {
+        id
+        slug
+        name
+        products(first: 1) {
+          totalCount
+        }
+      }
+    }
+  }
+}

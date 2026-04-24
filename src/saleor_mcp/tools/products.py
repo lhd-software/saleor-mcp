@@ -178,30 +178,5 @@ async def warehouse_details(
     }
 
 
-@products_router.tool(
-    annotations={
-        "title": "Fetch product details",
-        "readOnlyHint": True,
-        "idempotentHint": True,
-    }
-)
-async def get_product_details(
-    ctx: Context,
-    id: Annotated[str | None, "ID of the product to fetch details for"] = None,
-    slug: Annotated[str | None, "Slug of the product to fetch details for"] = None,
-    channel: Annotated[
-        str | None, "Slug of a channel for which the data should be returned."
-    ] = None,
-) -> dict[str, Any]:
-    """Fetch detailed product information.
-    
-    This tool retrieves full product details including variants, pricing, 
-    media, and attributes. Use this when you need deeper info about a specific product.
-    """
-    client = get_saleor_client()
-    try:
-        data = await client.product_details(id=id, slug=slug, channel=channel)
-        return {"data": data.product}
-    except Exception as e:
-        await ctx.error(str(e))
-        raise
+# `get_product_details` is defined in main.py as a UI-routed tool so it can
+# reuse the product-explorer resource and flow through `_proxy_thumb_url`.

@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from .async_base_client import AsyncBaseClient
 from .base_model import UNSET, UnsetType
+from .catalog_overview import CatalogOverview
 from .checkout_billing_address_update import CheckoutBillingAddressUpdate
 from .checkout_complete import CheckoutComplete
 from .checkout_create import CheckoutCreate
@@ -48,6 +49,51 @@ def gql(q: str) -> str:
 
 
 class Client(AsyncBaseClient):
+    async def catalog_overview(self, channel: str, **kwargs: Any) -> CatalogOverview:
+        query = gql(
+            """
+            query CatalogOverview($channel: String!) {
+              categories(level: 0, first: 20) {
+                edges {
+                  node {
+                    id
+                    slug
+                    name
+                    products(first: 3, channel: $channel) {
+                      totalCount
+                      edges {
+                        node {
+                          id
+                          name
+                          slug
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+              collections(first: 10, channel: $channel) {
+                edges {
+                  node {
+                    id
+                    slug
+                    name
+                    products(first: 1) {
+                      totalCount
+                    }
+                  }
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {"channel": channel}
+        response = await self.execute(
+            query=query, operation_name="CatalogOverview", variables=variables, **kwargs
+        )
+        data = self.get_data(response)
+        return CatalogOverview.model_validate(data)
+
     async def checkout_billing_address_update(
         self, id: str, billingAddress: AddressInput, **kwargs: Any
     ) -> CheckoutBillingAddressUpdate:
@@ -194,7 +240,7 @@ class Client(AsyncBaseClient):
                     product {
                       id
                       name
-                      thumbnail(size: 64) {
+                      thumbnail(size: 256) {
                         url
                       }
                     }
@@ -792,12 +838,20 @@ class Client(AsyncBaseClient):
                           id
                           name
                           sku
+                          pricing {
+                            price {
+                              gross {
+                                amount
+                                currency
+                              }
+                            }
+                          }
                         }
                       }
                     }
                     created
                     updatedAt
-                    thumbnail(size: 64) {
+                    thumbnail(size: 512) {
                       url
                     }
                     pricing {
@@ -949,6 +1003,9 @@ class Client(AsyncBaseClient):
                 description
                 category {
                   name
+                }
+                thumbnail(size: 1024) {
+                  url
                 }
                 media {
                   url

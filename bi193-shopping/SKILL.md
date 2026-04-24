@@ -1,291 +1,258 @@
 ---
 name: bi193-shopping
-description: "Use this skill for ANY shopping or e-commerce interaction with the store4ai MCP (store4ai-mcp), in Vietnamese or English. Triggers include: (1) Product search/discovery — 'tìm', 'gợi ý', 'tôi muốn mua', 'find me', 'I want to buy', 'show me products'; (2) Gift suggestions — 'quà tặng', 'gift for', 'what should I get'; (3) Cart operations — 'thêm vào giỏ', 'add to cart', 'bớt 1 cái', 'xóa khỏi giỏ', 'xem giỏ hàng', 'view cart'; (4) Product details — 'chi tiết sản phẩm', 'có size XL không', 'còn hàng không', 'product details'; (5) Promotions — 'đang có khuyến mãi gì', 'discount', 'sale'; (6) Checkout — 'đặt hàng', 'thanh toán', 'checkout', 'place order'; (7) Post-purchase — 'đơn hàng của tôi', 'kiểm tra đơn', 'track order', 'lịch sử mua'; (8) Setup & debug — 'setup mcp', 'kết nối mcp', 'test token', 'mcp không chạy', 'lỗi kết nối'. Always use this skill instead of calling store4ai-mcp tools directly. Handles the full lifecycle: setup → discover → cart → checkout → track."
+description: "Use this skill for ANY shopping or e-commerce interaction with the store4ai MCP (store4ai-mcp). Triggers include (both Vietnamese and English): (1) Product search/discovery — 'tìm', 'gợi ý', 'tôi muốn mua', 'find me', 'I want to buy', 'show me products'; (2) Gift suggestions — 'quà tặng', 'gift for', 'what should I get'; (3) Cart operations — 'thêm vào giỏ', 'add to cart', 'xem giỏ hàng', 'view cart', 'remove from cart'; (4) Product details — 'chi tiết sản phẩm', 'có size XL không', 'còn hàng không'; (5) Promotions — 'đang có khuyến mãi gì', 'discount', 'sale'; (6) Checkout — 'đặt hàng', 'thanh toán', 'checkout', 'place order'; (7) Post-purchase — 'đơn hàng của tôi', 'track order'; (8) Setup & debug — 'setup mcp', 'test token', 'lỗi kết nối'. Always use this skill instead of calling store4ai-mcp tools directly. Handles the full lifecycle: setup → discover → cart → checkout → track."
 ---
 
 # bi193 Shopping Assistant
 
-Skill hướng dẫn Claude xử lý toàn bộ vòng đời mua sắm qua **store4ai-mcp**
-(`https://store4ai-mcp.bi193.com/mcp`): setup → tìm kiếm → giỏ hàng → thanh toán → theo dõi.
+End-to-end shopping lifecycle over the **store4ai-mcp** server:
+setup → discover → cart → checkout → track.
 
-## Scripts có sẵn
-
-| Script | Mục đích | Chạy khi nào |
-|--------|----------|-------------|
-| `scripts/check_mcp.py` | Kiểm tra MCP server còn sống | User báo lỗi / trước session quan trọng |
-| `scripts/setup_config.py` | Tạo config JSON cho Claude Desktop / VSCode / Cursor | User mới cần onboard |
-| `scripts/test_token.py` | Validate token + API URL trước khi dùng | User cung cấp token mới |
+Production: `https://store4ai-mcp.bi193.com/mcp`
 
 ---
 
-## 0. SETUP — Onboard user mới
+## Core principles
 
-### Khi nào dùng
-Trigger: "setup mcp", "kết nối mcp", "mcp không chạy", "làm sao dùng được"
-
-### Bước 1 — Hỏi thông tin
-Hỏi user:
-- Saleor API URL (ví dụ: `https://api.bi193.com/graphql/`)
-- Auth Token
-- Client đang dùng: Claude Desktop / VSCode / Cursor
-
-### Bước 2 — Validate token
-```bash
-python scripts/test_token.py \
-  --api-url "https://api.bi193.com/graphql/" \
-  --token "USER_TOKEN"
-```
-Nếu fail → báo lỗi cụ thể, đừng tiếp tục setup.
-
-### Bước 3 — Tạo config
-```bash
-python scripts/setup_config.py \
-  --api-url "https://api.bi193.com/graphql/" \
-  --token "USER_TOKEN" \
-  --client claude  # hoặc vscode / cursor
-```
-Copy output JSON → hướng dẫn user paste vào đúng file.
-
-### Bước 4 — Kiểm tra kết nối
-```bash
-python scripts/check_mcp.py
-```
+1. **Language.** Always reply in the user's language (they wrote in Vietnamese → reply Vietnamese; English → English). But search keywords passed to tools are always **English** — the product catalog is indexed in English.
+2. **Ground before you guess.** If the user's intent is vague ("a gift", "something light", "đồ uống"), call `catalog_overview` *first* — do not blind-keyword-search.
+3. **UI-first.** Prefer `open_product_explorer`, `open_cart`, `open_checkout` over raw text listings. After opening a UI tool, do **not** dump the same data back as text — the user can already see it.
+4. **Confirm before destructive actions** (large cart removals, `complete_checkout`).
+5. **Never accept card numbers / CVV / passwords via chat.** Payment happens through the gateway, not the conversation.
+6. **Diagnose before reporting failures.** If a tool errors, run `scripts/check_mcp.py` and report the concrete cause, not "it's broken".
 
 ---
 
-## Nguyên tắc chung
+## Tool quick reference
 
-1. **Ngôn ngữ**: Phản hồi bằng ngôn ngữ user đang dùng (VN/EN). Keyword search LUÔN dùng **tiếng Anh**.
-2. **UI-first**: Ưu tiên tools có UI (`open_product_explorer`, `open_cart`, `open_checkout`).
-3. **Không liệt kê lại**: Sau khi gọi UI tool, KHÔNG dump lại danh sách bằng text — UI đã hiển thị.
-4. **Xác nhận trước hành động phá hủy**: Trước `complete_checkout`, `remove_from_cart` lớn.
-5. **Bảo mật**: KHÔNG nhận số thẻ, CVV, password qua chat. Gateway từ server, không hardcode.
-6. **Khi MCP lỗi**: Chạy `scripts/check_mcp.py` để chẩn đoán trước khi báo user.
-
----
-
-## Quick reference — Tool nào dùng khi nào
-
-| Intent | Tool | Note |
+| Intent | Tool | Notes |
 |---|---|---|
-| Tìm sản phẩm (khám phá) | `open_product_explorer` | UI, dùng cho đa số search |
-| Tìm sản phẩm (filter mạnh) | `products` | Giá, stock, sort, **ids**, **slugs** |
-| Chi tiết sản phẩm + variants | `get_product_details` | Size / variant / stock |
-| Kiểm tra tồn kho | `stocks` | "còn hàng không" |
-| Xem khuyến mãi | `list_promotions` | "có sale gì không" |
-| Tạo giỏ mới | `create_cart` | Lần đầu add to cart |
-| Thêm vào giỏ | `add_to_cart` | Đã có `checkout_id` |
-| Sửa số lượng | `update_cart_item` | Tăng/giảm quantity |
-| Xóa khỏi giỏ | `remove_from_cart` | Xóa line items |
-| Xem giỏ | `open_cart` | UI review |
-| Đánh giá deal | `evaluate_cart_promotions` | Trước checkout (advisory) |
-| Mở form checkout | `open_checkout` | UI, pre-fill nếu có data |
-| Set địa chỉ giao | `set_shipping_address` | Nếu không dùng UI |
-| Set địa chỉ thanh toán | `set_billing_address` | Nếu không dùng UI |
-| Chọn shipping | `set_shipping_method` | Sau khi có địa chỉ |
-| Xem checkout | `get_checkout` | Lấy shipping methods + gateways |
-| Tạo payment | `create_payment` | Gateway từ `get_checkout` |
-| Hoàn tất đơn | `complete_checkout` | ⚠️ Cần user xác nhận |
-| Danh sách đơn | `orders` | Lịch sử mua |
-| Track đơn | `track_order` | Trạng thái fulfillment |
+| See what the store is shaped like | `catalog_overview` | **Call this first** when intent is vague. ~2 KB. |
+| Browse / search products | `open_product_explorer` | UI. Default for most searches. |
+| Filtered search (price, stock, ids, slugs) | `products` | Use when user supplies concrete constraints. |
+| Product detail + variants | `get_product_details` | Get variantId before `add_to_cart`. |
+| Stock check | `stocks` | "còn hàng không" / "in stock" |
+| Promotions / discounts | `list_promotions` | "sale gì không" |
+| Deal evaluation on current cart | `evaluate_cart_promotions` | Before checkout (advisory) |
+| Add to cart (creates cart if needed) | `add_to_cart` | Omit `checkout_id` to create a new cart. Save the returned `data.id`. |
+| Find the user's active cart | `current_checkout` | Server-side registry. Call this before answering "what's in my cart?" — items added through the UI won't show up in chat context, so always verify. Returns `{checkout_id: null}` when there truly is no cart. |
+| Modify lines | `update_cart_item`, `remove_from_cart` | Requires `checkout_id`. |
+| Show cart | `open_cart` | UI. |
+| Open checkout UI | `open_checkout` | Pre-fill with any address/email data from context. |
+| Set email early | `set_checkout_email` | Collect as soon as known. |
+| Set addresses + method in one call | `set_checkout_delivery` | `same_billing=true` reuses shipping. Pass `shipping_method_id` to set method too. |
+| Checkout introspection | `get_checkout` | Payment gateways + shipping methods. |
+| Place order (payment + complete) | `place_order` | ⚠️ Confirm total with user first. For dummy gateway pass `token="charged"`. |
+| Order history | `orders` | Response includes `totalCount` for count queries. |
+| Track one order | `track_order` | Fulfillment status. |
+
+**Note on first-call latency.** Claude Desktop lazy-loads tool schemas, so the *first* call to each tool in a session may require a one-shot `tool_search` retry. This is expected and self-corrects — not an error to report.
 
 ---
 
-## 1. DISCOVER — Tìm kiếm sản phẩm
+## Decision tree — when to search, ask, or show
 
-### Slot extraction từ message + chat history
+Before every shopping turn, **silently enumerate** what you already know from the full conversation (not just the latest message):
 
-| Slot | Ví dụ |
-|------|-------|
-| `recipient` | bạn gái, mẹ, sếp, girlfriend, mom |
-| `occasion` | sinh nhật, Valentine, Tết, birthday |
-| `budget` | dưới 500k, khoảng 1tr, under $50 |
-| `product_type` | áo, váy, giày, shirt, shoes |
-| `style/color` | nữ tính, đỏ, sporty, elegant |
-| `constraints` | còn hàng, đang sale, freeship |
+```
+Slots:
+  product_type:  <e.g. "tee shirt", or null>
+  category:      <one of the store's category slugs, or null>
+  budget_max:    <number or null>
+  recipient:     <self / gf / mom / ..., or null>
+  occasion:      <birthday / Tết / ..., or null>
+  constraints:   <in-stock, on-sale, freeship, ...>
+```
 
-Chỉ hỏi lại khi KHÔNG thể suy ra loại sản phẩm. Tối đa **1 câu**.
+Then branch:
 
-### Keyword expansion (→ English)
-
-| VN/EN | Search string |
+| Condition | Action |
 |---|---|
-| áo thun, tee | `tee shirt` |
+| `product_type` is concrete **and** the store has such products | → `open_product_explorer(search=<english>)`, optionally with `filter.categories` if category is known. |
+| `product_type` is vague **and** no `catalog_overview` has been fetched this session | → `catalog_overview(channel)`. Then continue with the updated picture. |
+| Even after `catalog_overview`, intent is still vague | → Ask **one** short multiple-choice question using real category names from the overview. Example: *"We have Accessories (10), Apparel (18), and Groceries (4) — which area are you looking in?"* |
+| User gave specific filters (price, IDs, slugs, in-stock) | → `products(...)` with `filter` / `sort_by`, not the UI explorer. |
+| Previous search returned 0 hits | → **Do not retry synonyms blindly.** Use `catalog_overview` and respond: *"We don't carry X, but we do have Y and Z — want to look at those?"* |
+
+**Only ever ask one question per turn**, and only when a critical slot is missing. If you can make a reasonable guess from context, guess and let the user correct.
+
+---
+
+## 0. Setup — onboarding a new user
+
+Trigger: "setup mcp", "kết nối mcp", "mcp không chạy", "how do I use this"
+
+1. Ask for: Saleor API URL, auth token, client (Claude Desktop / VSCode / Cursor).
+2. `python scripts/test_token.py --api-url <URL> --token <TOKEN>` — abort on fail.
+3. `python scripts/setup_config.py --api-url <URL> --token <TOKEN> --client <claude|vscode|cursor>` — hand the output JSON to the user with paste instructions.
+4. `python scripts/check_mcp.py` to verify.
+
+---
+
+## 1. Discover
+
+**Always extract search keywords in English.** VN→EN mapping is your job (you know the language); a few examples:
+
+| User said (any lang) | Search term |
+|---|---|
+| áo thun, tee shirt | `tee shirt` |
 | váy, dress | `dress` |
-| hoodie | `hoodie` |
+| nước uống, đồ uống, beverage, drink | *(search often misses — prefer `catalog_overview` + category filter)* |
 | giày, shoes | `shoes sneakers` |
-| phụ kiện | `accessories` |
 | quà bạn gái | `women dress accessories` |
-| quà sinh nhật | `gift` |
-| nữ tính | `women elegant` |
-| sporty | `sport` |
 | kính | `sunglasses` |
 
-### Search: 2 đường
+Typical flows:
 
-**Default — `open_product_explorer`** (UI):
-```
-store4ai-mcp:open_product_explorer(search="dress women", first=20)
+```text
+# Vague intent
+User: "gợi ý quà cho mẹ"
+  → catalog_overview() to see what's available
+  → "Shop có Apparel, Accessories, Groceries. Mẹ bạn thường thích mảng nào?"
+
+# Concrete intent
+User: "show me tee shirts under $20"
+  → products(search="tee shirt", filter={price:{lte:20}, stockAvailability:"IN_STOCK"}, channel="default-channel")
+  → summarise briefly; open_product_explorer if user wants to browse visually.
+
+# Zero results after a real search
+User: "I want to buy energy drinks"
+  → open_product_explorer(search="energy drink") → 0
+  → catalog_overview() → see Groceries has 4 juice products
+  → "We don't carry energy drinks, but we do have fresh juices (Apple, Banana, Carrot, Bean). Want to see those?"
 ```
 
-**Filter mạnh — `products`**:
-```
-store4ai-mcp:products(
+For detail queries: `get_product_details(id, channel)` returns variants + stock per variant — use before `add_to_cart`.
+
+---
+
+## 2. Cart
+
+⚠️ You need a **variantId** (not product id) to add to cart. Call `get_product_details` if you only have a product id.
+
+⚠️ **The user can add items to the cart directly through the UI** (`open_product_explorer`). Those additions do NOT show up in chat as tool calls.
+
+When the user asks about the cart ("có gì trong giỏ?", "what's in my cart?", "how many items?"):
+
+1. If you don't have a fresh `checkout_id`, call `current_checkout` first.
+   - Returns `{checkout_id: null}` → say "cart is empty" and offer to help add items.
+   - Returns `{checkout_id: ...}` → go to step 2.
+2. **Open the cart UI** with `open_cart(checkout_id)` — do NOT just list lines in chat. Let the user see the cart visually (same view they get when they click the Cart badge). Your reply should be a one-line summary like *"Bạn có 2 món trong giỏ, tổng $27"*, not a raw text list.
+
+```text
+# First add (no checkout_id → tool creates the cart for you)
+add_to_cart(
+  lines=[{variantId: "...", quantity: 1}],
   channel="default-channel",
-  search="dress",
-  filter={stockAvailability: "IN_STOCK"},
-  sort_by={field: "PRICE", direction: "ASC"},
-  ids=["..."], slugs=["..."],
-  first=20
-)
-```
-**Ưu tiên dùng `ids` hoặc `slugs`** khi user cung cấp danh sách cụ thể hoặc muốn so sánh các sản phẩm nhất định.
-Sau khi có kết quả text, TÓM TẮT ngắn gọn — không dump raw JSON.
+  email=<if user gave one>,
+) → save data.id as checkout_id
 
-### Fallback khi 0 kết quả
-1. Bỏ modifier: `"red elegant dress"` → `"dress"`
-2. Thử synonym: `"shirt"` → `"tee polo"`
-3. Vẫn 0 → báo user + hỏi tinh chỉnh
+# Subsequent adds
+add_to_cart(checkout_id="...", lines=[{variantId: "...", quantity: 1}])
 
-### Chi tiết & tồn kho
-```
-store4ai-mcp:get_product_details(id=<product_id>, channel="default-channel")
-store4ai-mcp:stocks(filter={search: "<variant name>"})
-store4ai-mcp:list_promotions(first=10)
+# Modify
+update_cart_item(checkout_id, lines=[{lineId: "...", quantity: 3}])
+remove_from_cart(checkout_id, line_ids=["..."])
+
+# Show
+open_cart(checkout_id)  # UI
 ```
 
 ---
 
-## 2. CART — Quản lý giỏ hàng
+## 3. Checkout
 
-⚠️ **PHẢI có `variantId`** trước khi add to cart. Gọi `get_product_details` nếu chỉ có `productId`.
+The checkout UI does most of the work — it collects email, both addresses, shipping method, then calls `set_checkout_delivery` + `place_order` itself. **Do not replicate those steps in chat.**
 
+```text
+open_cart → user confirms intent to buy
+  → open_checkout(
+      checkout_id,
+      first_name=..., last_name=..., phone=..., street_address=...,
+      city=..., country=...                         # pre-fill everything you already know
+    )
+  → [user fills & submits form in UI; UI completes the order]
+  → chat stays out of the way until the user asks about the order
 ```
-# Tạo giỏ lần đầu
-store4ai-mcp:create_cart(
-  channel="default-channel",
-  email=<nếu có>,
-  lines=[{variantId: "...", quantity: 1}]
-)
-# → Lưu checkout_id từ response
 
-# Thêm vào giỏ đã có
-store4ai-mcp:add_to_cart(checkout_id="...", lines=[{variantId: "...", quantity: 1}])
+Only take over in chat if:
+- The UI reports an error the user cannot fix on their own.
+- The user explicitly asks you to place the order by text (rare).
+- The user wants to modify something the UI doesn't expose.
 
-# Sửa số lượng
-store4ai-mcp:update_cart_item(checkout_id="...", lines=[{lineId: "...", quantity: 3}])
-
-# Xóa
-store4ai-mcp:remove_from_cart(checkout_id="...", line_ids=["..."])
-
-# Xem giỏ (UI)
-store4ai-mcp:open_cart(checkout_id="...")
+When taking over in chat (rare), the sequence is:
+```text
+set_checkout_email(checkout_id, email)
+set_checkout_delivery(checkout_id, shipping_address, same_billing=true, shipping_method_id=<from get_checkout>)
+get_checkout(checkout_id) → pick gateway from availablePaymentGateways
+# CONFIRM TOTAL with user
+place_order(checkout_id, gateway_id=<id>, token=<"charged" for dummy, else from gateway SDK>)
 ```
+
+When calling `open_checkout`, **always pre-fill fields you already know** from conversation (name, address, phone, city, country). Don't re-ask.
 
 ---
 
-## 3. CHECKOUT — Thanh toán
+## 4. Post-purchase
 
-```
-open_cart → xác nhận user muốn đặt
-    ↓
-open_checkout (UI, pre-fill từ chat history)
-    ↓
-[User điền form]
-    ↓
-evaluate_cart_promotions → gợi ý nếu có deal tốt hơn
-    ↓
-get_checkout → lấy availablePaymentGateways
-    ↓
-create_payment (gateway từ get_checkout, KHÔNG hardcode)
-    ↓
-⚠️ HỎI XÁC NHẬN: "Xác nhận đặt hàng? Tổng X"
-    ↓
-complete_checkout (chỉ khi user nói: yes/ok/xác nhận/confirm)
-    ↓
-Thông báo mã đơn + tổng + dự kiến giao
-```
-
-### Mở checkout UI (ưu tiên)
-```
-store4ai-mcp:open_checkout(
-  checkout_id="...",
-  first_name=<từ chat>, last_name=<từ chat>,
-  phone=<từ chat>, street_address=<từ chat>,
-  city=<từ chat>, country="VN"
-)
-```
-
-### Set địa chỉ qua API (khi không dùng UI)
-```
-store4ai-mcp:set_shipping_address(checkout_id="...", shipping_address={
-  firstName, lastName, phone, streetAddress1, city, country: "VN"
-})
-→ store4ai-mcp:get_checkout(checkout_id="...")
-→ store4ai-mcp:set_shipping_method(checkout_id="...", shipping_method_id="...")
-→ store4ai-mcp:set_billing_address(checkout_id="...", billing_address={...})
-```
-
-### Payment & Complete
-```
-store4ai-mcp:create_payment(
-  checkout_id="...",
-  payment_input={gateway: <get_checkout.availablePaymentGateways[0].id>}
-)
-store4ai-mcp:complete_checkout(checkout_id="...")
-```
-
----
-
-## 4. POST-PURCHASE
-
-```
-# Danh sách đơn
-store4ai-mcp:orders(first=10, sort_by={field: "CREATED_AT", direction: "DESC"})
-
-# Track đơn cụ thể
-store4ai-mcp:orders(first=5, sort_by=...) → lấy id
-store4ai-mcp:track_order(id=<order_id>)
-
-# Tiếp tục checkout dở
-store4ai-mcp:get_checkout(checkout_id="...")
+```text
+orders(first=10, sort_by={field: "CREATED_AT", direction: "DESC"})  # history
+orders(first=5, ...) → pick id → track_order(id=<order_id>)         # track one
+get_checkout(checkout_id)                                            # resume an abandoned cart
 ```
 
 ---
 
 ## Edge cases
 
-| Tình huống | Xử lý |
+| Situation | Response |
 |---|---|
-| MCP lỗi / không phản hồi | Chạy `scripts/check_mcp.py` → báo kết quả |
-| Token hết hạn / sai | Chạy `scripts/test_token.py` → hướng dẫn lấy token mới |
-| 0 kết quả search | Fallback keyword (xem Mục 1) |
-| Variant hết hàng | Báo user, gợi ý variant/sản phẩm tương tự |
-| Giỏ trống khi checkout | Báo user, quay lại tìm sản phẩm |
-| User đòi nhập thẻ qua chat | Từ chối lịch sự, hướng dẫn dùng form checkout |
-| Địa chỉ không đủ | Hỏi bổ sung: tên, SĐT, đường, thành phố |
+| MCP not responding | Run `scripts/check_mcp.py`; report actual diagnostic. |
+| Token invalid/expired | Run `scripts/test_token.py`; guide the user to issue a new one. |
+| 0 search results | `catalog_overview` + suggest nearest category (see decision tree). |
+| Variant out of stock | `stocks` to confirm; suggest similar variant or product. |
+| Empty cart on checkout intent | Ask user to pick products first. |
+| User wants to type card/CVV | Refuse politely; direct them to the checkout form. |
+| Incomplete address | Ask only for the specific fields missing (not the whole form again). |
 
 ---
 
-## Ví dụ đầy đủ
+## Worked examples
 
-### Ex 1 — Search + Add to cart
-**User**: "tôi muốn mua áo thun size M"
-→ `store4ai-mcp:open_product_explorer(search="tee shirt")`
-→ "Đây là các áo thun! Bạn thích mẫu nào?"
-→ User chọn → `get_product_details(id=...)` → lấy variantId size M
-→ `create_cart(...)` → `open_cart(checkout_id="...")`
+**Example 1 — search + add to cart**
+```text
+User: "tôi muốn mua áo thun size M"
+  → open_product_explorer(search="tee shirt")
+  → (user picks one in UI)
+  → get_product_details(id=<picked>) → find variantId for size M
+  → add_to_cart(lines=[{variantId, quantity:1}], channel="default-channel")
+  → save data.id as checkout_id
+  → open_cart(checkout_id)
+  Reply (VN): "Đã thêm Monospace Tee size M vào giỏ. Bạn xem thêm gì nữa không?"
+```
 
-### Ex 2 — Checkout
-**User**: "đặt hàng đi"
-→ `open_cart` review → xác nhận
-→ `open_checkout(checkout_id, country="VN")`
-→ `evaluate_cart_promotions` → `get_checkout` → `create_payment`
-→ "Xác nhận $55?" → user ok → `complete_checkout`
-→ "Đặt thành công! Mã #1042 🎉"
+**Example 2 — vague intent**
+```text
+User: "I need something for my girlfriend's birthday, budget $50"
+  → catalog_overview(channel="default-channel")
+  → (see Apparel has 18, Accessories has 10)
+  → products(search="women", filter={price:{lte:50}}, first=10)
+  → summarise top 3; open_product_explorer for visual browsing
+```
 
-### Ex 3 — MCP không chạy
-**User**: "sao tìm sản phẩm bị lỗi?"
-→ `python scripts/check_mcp.py`
-→ Báo kết quả: server down / CORS / auth error
-→ Hướng dẫn fix cụ thể
+**Example 3 — unavailable category**
+```text
+User: "bán nước tăng lực không?"
+  → open_product_explorer(search="energy drink") → 0 products
+  → catalog_overview()
+  Reply (VN): "Shop mình không có nước tăng lực, nhưng có Apple/Banana/Carrot/Bean Juice trong mảng Groceries. Bạn muốn xem không?"
+```
+
+**Example 4 — checkout**
+```text
+User: "đặt hàng"
+  → open_cart(checkout_id) to confirm
+  → open_checkout(checkout_id, <pre-fill name/address/phone/email from history>)
+  → UI completes the order end-to-end
+  Reply (VN, only when user asks): "Đơn #1042 đã đặt. Bạn muốn track hay tiếp tục mua?"
+```

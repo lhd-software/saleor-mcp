@@ -1,4 +1,5 @@
 import os
+from typing import Any
 from urllib.parse import quote, urlparse
 
 import httpx
@@ -142,10 +143,29 @@ async def open_product_explorer(
             if hasattr(node, "productVariants") and node.productVariants:
                 pvs = node.productVariants
                 if hasattr(pvs, "edges") and pvs.edges:
-                    product["variants"] = [
-                        {"id": e.node.id, "name": e.node.name}
-                        for e in pvs.edges
-                    ]
+                    variants = []
+                    for e in pvs.edges:
+                        v = e.node
+                        entry: dict = {
+                            "id": v.id,
+                            "name": v.name or "",
+                        }
+                        sku = getattr(v, "sku", None)
+                        if sku:
+                            entry["sku"] = sku
+                        price = getattr(v, "pricing", None)
+                        gross = (
+                            price.price.gross
+                            if price and price.price and price.price.gross
+                            else None
+                        )
+                        if gross:
+                            entry["pricing"] = {
+                                "amount": float(gross.amount),
+                                "currency": gross.currency,
+                            }
+                        variants.append(entry)
+                    product["variants"] = variants
             products.append(product)
 
         # Split UI payload (rich, with base64 thumbnails) from LLM content
@@ -247,6 +267,102 @@ def _serialize_checkout(checkout: object) -> dict:
             {"id": g.id, "name": g.name} for g in c.availablePaymentGateways
         ]
     return result
+
+
+def _serialize_product(p: object) -> dict:
+    """Shape a single Saleor product for the UI's product/variant renderer."""
+    product: dict[str, Any] = {
+        "id": getattr(p, "id", ""),
+        "name": getattr(p, "name", "") or "",
+        "slug": getattr(p, "slug", "") or "",
+        "description": getattr(p, "description", "") or "",
+    }
+    thumb = getattr(p, "thumbnail", None)
+    if thumb:
+        proxied = _proxy_thumb_url(getattr(thumb, "url", None))
+        if proxied:
+            product["thumbnail"] = {"url": proxied}
+    variants = getattr(p, "variants", None) or []
+    variant_out: list[dict[str, Any]] = []
+    for v in variants:
+        entry: dict[str, Any] = {"id": v.id, "name": getattr(v, "name", "") or ""}
+        sku = getattr(v, "sku", None)
+        if sku:
+            entry["sku"] = sku
+        pricing = getattr(v, "pricing", None)
+        gross = (
+            pricing.price.gross
+            if pricing and pricing.price and pricing.price.gross
+            else None
+        )
+        if gross:
+            entry["pricing"] = {
+                "amount": float(gross.amount),
+                "currency": gross.currency,
+            }
+        variant_out.append(entry)
+    if variant_out:
+        product["variants"] = variant_out
+        # Surface cheapest variant as the product-level price for the grid.
+        priced = [v for v in variant_out if "pricing" in v]
+        if priced:
+            cheapest = min(priced, key=lambda v: v["pricing"]["amount"])
+            product["pricing"] = cheapest["pricing"]
+    return product
+
+
+@mcp.tool(
+    meta={"ui": {"resourceUri": RESOURCE_URI}},
+    annotations={
+        "title": "Product detail",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+    },
+)
+async def get_product_details(
+    ctx: Context,
+    id: str | None = None,
+    slug: str | None = None,
+    channel: str | None = None,
+) -> Any:
+    """Open the product detail UI (image, description, variants with price + SKU).
+
+    Provide either `id` or `slug`. Pass `channel` if prices are channel-specific.
+    The UI renders the same variant picker used in the grid — the chat reply
+    stays a one-line summary.
+    """
+    from saleor_mcp.ctx_utils import get_saleor_client
+    client = get_saleor_client()
+    try:
+        data = await client.product_details(id=id, slug=slug, channel=channel)
+    except Exception as e:
+        await ctx.error(str(e))
+        return ToolResult(
+            content=[TextContent(type="text", text=f"Error: {e}")],
+            structured_content={"view": "detail", "error": str(e)},
+        )
+    if not data.product:
+        return ToolResult(
+            content=[TextContent(type="text", text="Product not found")],
+            structured_content={"view": "detail", "error": "Product not found"},
+        )
+    product = _serialize_product(data.product)
+    # Compact summary for the LLM (no base64, no description blob)
+    variants_summary = ", ".join(
+        v.get("name", "Default")
+        + (f" (${v['pricing']['amount']})" if v.get("pricing") else "")
+        for v in product.get("variants", [])
+    ) or "single variant"
+    price_txt = ""
+    if product.get("pricing"):
+        price_txt = f" from ${product['pricing']['amount']} {product['pricing']['currency']}"
+    summary = (
+        f"Opened detail for '{product['name']}'{price_txt}. Variants: {variants_summary}."
+    )
+    return ToolResult(
+        content=[TextContent(type="text", text=summary)],
+        structured_content={"view": "detail", "product": product},
+    )
 
 
 @mcp.tool(meta={"ui": {"resourceUri": RESOURCE_URI}})

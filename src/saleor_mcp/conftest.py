@@ -240,6 +240,11 @@ def sample_products_response():
                                             "id": "UHJvZHVjdFZhcmlhbnQ6MQ==",
                                             "name": "S",
                                             "sku": "BLUE-HOODIE-S",
+                                            "pricing": {
+                                                "price": {
+                                                    "gross": {"amount": 29.99, "currency": "USD"}
+                                                }
+                                            },
                                         }
                                     },
                                     {
@@ -247,6 +252,11 @@ def sample_products_response():
                                             "id": "UHJvZHVjdFZhcmlhbnQ6Mg==",
                                             "name": "M",
                                             "sku": "BLUE-HOODIE-M",
+                                            "pricing": {
+                                                "price": {
+                                                    "gross": {"amount": 29.99, "currency": "USD"}
+                                                }
+                                            },
                                         }
                                     },
                                 ]
@@ -510,6 +520,7 @@ def sample_product_details_response():
                 "slug": "blue-hoodie",
                 "description": "A very comfortable hoodie.",
                 "category": {"name": "Hoodies"},
+                "thumbnail": {"url": "https://example.com/thumb.jpg"},
                 "media": [{"url": "https://example.com/image.jpg", "alt": "Blue Hoodie"}],
                 "variants": [
                     {
