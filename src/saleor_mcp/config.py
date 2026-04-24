@@ -40,7 +40,10 @@ def get_config_from_headers() -> SaleorConfig:
     """
 
     allowed_domain_pattern = os.getenv("ALLOWED_DOMAIN_PATTERN", "")
-    headers = get_http_headers()
+    try:
+        headers = get_http_headers()
+    except Exception:
+        headers = {}
 
     api_url = headers.get("x-saleor-api-url") or os.getenv("SALEOR_API_URL")
     if not api_url:

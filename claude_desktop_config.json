@@ -1,0 +1,36 @@
+{
+  "mcpServers": {
+    "pencil": {
+      "command": "/Users/nguyendat/.pencil/mcp/antigravity/out/mcp-server-darwin-arm64",
+      "args": [
+        "--app",
+        "antigravity"
+      ],
+      "env": {}
+    },
+    "saleor-mcp": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/nguyendat/Code/work/store4ai/saleor-mcp",
+        "run",
+        "saleor-mcp"
+      ],
+      "env": {
+        "SALEOR_API_URL": "https://api.bi193.com/graphql/",
+        "SALEOR_AUTH_TOKEN": "iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
+      }
+    }
+  },
+  "preferences": {
+    "localAgentModeTrustedFolders": [
+      "/Users/nguyendat/Work/Projects/2026-Q1_VIB-PowerBI/01-Requirements",
+      "/Users/nguyendat/Work/Resources/Templates",
+      "/Users/nguyendat/Code/work/vib-powerbi-portal/vib-ui-demo/enduser"
+    ],
+    "coworkScheduledTasksEnabled": true,
+    "ccdScheduledTasksEnabled": true,
+    "sidebarMode": "chat",
+    "coworkWebSearchEnabled": true
+  }
+}
