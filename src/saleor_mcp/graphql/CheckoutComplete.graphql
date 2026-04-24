@@ -4,6 +4,14 @@ mutation CheckoutComplete($id: ID!) {
       id
       number
       status
+      paymentStatus
+      created
+      total {
+        gross {
+          amount
+          currency
+        }
+      }
     }
     errors {
       field

@@ -783,18 +783,26 @@ function renderPaymentView(payment?: any) {
 // ═══════════════════════════════════════════════════
 function renderOrderView(order?: any) {
   const el = document.getElementById("order-content")!;
-  if (order) {
-    el.innerHTML = `
-      <div class="summary-box">
-        <h3 style="margin-bottom:12px;">📦 Order ${order.number || order.id || ""}</h3>
-        <div class="summary-row"><span>Status</span><span>${order.status || "—"}</span></div>
-        <div class="summary-row"><span>Payment</span><span>${order.paymentStatus || "—"}</span></div>
-        <div class="summary-row"><span>Created</span><span>${order.created || "—"}</span></div>
-      </div>
-    `;
-  } else {
+  if (!order) {
     el.innerHTML = '<div class="loading">No order data</div>';
+    return;
   }
+  const total = order.total?.gross
+    ? `$${order.total.gross.amount.toFixed(2)} ${order.total.gross.currency}`
+    : "—";
+  const created = order.created ? new Date(order.created).toLocaleString() : "—";
+  el.innerHTML = `
+    <div class="summary-box" style="text-align:center;padding:24px 14px;">
+      <div style="font-size:44px;margin-bottom:8px;">🎉</div>
+      <h3 style="margin-bottom:4px;">Order placed!</h3>
+      <div style="color:var(--text-muted);font-size:12px;margin-bottom:16px;">Thank you for shopping with BI193 Store</div>
+      <div class="summary-row" style="text-align:left;"><span>Order #</span><span><b>${order.number || order.id || "—"}</b></span></div>
+      <div class="summary-row" style="text-align:left;"><span>Status</span><span>${order.status || "—"}</span></div>
+      <div class="summary-row" style="text-align:left;"><span>Payment</span><span>${order.paymentStatus || "—"}</span></div>
+      <div class="summary-row" style="text-align:left;"><span>Total</span><span><b>${total}</b></span></div>
+      <div class="summary-row" style="text-align:left;"><span>Created</span><span>${created}</span></div>
+    </div>
+  `;
 }
 
 // ═══════════════════════════════════════════════════
@@ -926,16 +934,45 @@ document.getElementById("checkout-form")?.addEventListener("submit", async (e) =
       shipping_method_id: selectedMethod,
     });
 
-    statusBar.textContent = "💬 Asking Claude to finalize payment...";
-    await app.sendMessage({
-      role: "user",
-      content: [{
-        type: "text",
-        text:
-          "Tôi đã điền xong thông tin giao hàng trên form. Tiếp tục giúp tôi thanh toán "
-          + "(chọn payment gateway, xác nhận tổng tiền, rồi hoàn tất đơn).",
-      }],
+    // Fetch latest checkout to read available payment gateways
+    statusBar.textContent = "🔄 Checking payment options...";
+    const coRes = await callTool("open_checkout", { checkout_id: currentCheckoutId });
+    const gateways = coRes.checkout?.paymentGateways || [];
+    if (gateways.length === 0) {
+      throw new Error("No payment gateways available — contact store admin");
+    }
+    const gateway = gateways[0];
+
+    // Some gateways require a token even for sandbox/dummy use. Saleor's
+    // built-in dummy expects a status token (e.g. "charged") to simulate a
+    // successful capture. For real gateways we'd collect this via their SDK.
+    const paymentInput: Record<string, any> = { gateway: gateway.id };
+    if (gateway.id === "mirumee.payments.dummy") paymentInput.token = "charged";
+
+    await runStep(`Creating payment via ${gateway.name}`, "create_payment", {
+      checkout_id: currentCheckoutId,
+      payment_input: paymentInput,
     });
+
+    statusBar.textContent = "🔄 Placing order...";
+    const completeRes = await callTool("complete_checkout", {
+      checkout_id: currentCheckoutId,
+    });
+    const completeErr = extractErrors(completeRes);
+    if (completeErr) throw new Error(completeErr);
+    const order = completeRes.data;
+    if (!order?.id) throw new Error("Order could not be created");
+
+    // Checkout has become an order — reset local cart/checkout state
+    const orderId = String(order.number || order.id);
+    saveCheckoutId(null);
+    cart.length = 0;
+    saveCart();
+    updateCartBadge();
+
+    showView("order");
+    renderOrderView(order);
+    statusBar.textContent = `✅ Order #${orderId} placed`;
   } catch (err: any) {
     console.error("Checkout flow failed:", err);
     showToast(`❌ ${err.message || "Checkout failed"}`, 4000, true);

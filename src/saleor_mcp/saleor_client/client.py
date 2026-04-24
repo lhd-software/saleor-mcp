@@ -100,6 +100,14 @@ class Client(AsyncBaseClient):
                   id
                   number
                   status
+                  paymentStatus
+                  created
+                  total {
+                    gross {
+                      amount
+                      currency
+                    }
+                  }
                 }
                 errors {
                   field
@@ -181,9 +189,14 @@ class Client(AsyncBaseClient):
                   id
                   quantity
                   variant {
+                    id
                     name
                     product {
+                      id
                       name
+                      thumbnail(size: 64) {
+                        url
+                      }
                     }
                   }
                 }

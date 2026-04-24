@@ -15,6 +15,8 @@ from .checkout_complete import (
     CheckoutCompleteCheckoutComplete,
     CheckoutCompleteCheckoutCompleteErrors,
     CheckoutCompleteCheckoutCompleteOrder,
+    CheckoutCompleteCheckoutCompleteOrderTotal,
+    CheckoutCompleteCheckoutCompleteOrderTotalGross,
 )
 from .checkout_create import (
     CheckoutCreate,
@@ -41,6 +43,7 @@ from .checkout_details import (
     CheckoutDetailsCheckoutLines,
     CheckoutDetailsCheckoutLinesVariant,
     CheckoutDetailsCheckoutLinesVariantProduct,
+    CheckoutDetailsCheckoutLinesVariantProductThumbnail,
     CheckoutDetailsCheckoutShippingAddress,
     CheckoutDetailsCheckoutShippingAddressCountry,
     CheckoutDetailsCheckoutShippingMethods,
@@ -769,6 +772,8 @@ __all__ = [
     "CheckoutCompleteCheckoutComplete",
     "CheckoutCompleteCheckoutCompleteErrors",
     "CheckoutCompleteCheckoutCompleteOrder",
+    "CheckoutCompleteCheckoutCompleteOrderTotal",
+    "CheckoutCompleteCheckoutCompleteOrderTotalGross",
     "CheckoutCreate",
     "CheckoutCreateCheckoutCreate",
     "CheckoutCreateCheckoutCreateCheckout",
@@ -794,6 +799,7 @@ __all__ = [
     "CheckoutDetailsCheckoutLines",
     "CheckoutDetailsCheckoutLinesVariant",
     "CheckoutDetailsCheckoutLinesVariantProduct",
+    "CheckoutDetailsCheckoutLinesVariantProductThumbnail",
     "CheckoutDetailsCheckoutShippingAddress",
     "CheckoutDetailsCheckoutShippingAddressCountry",
     "CheckoutDetailsCheckoutShippingMethods",

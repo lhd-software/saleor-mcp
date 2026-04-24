@@ -13,9 +13,14 @@ query CheckoutDetails($id: ID!) {
       id
       quantity
       variant {
+        id
         name
         product {
+          id
           name
+          thumbnail(size: 64) {
+            url
+          }
         }
       }
     }

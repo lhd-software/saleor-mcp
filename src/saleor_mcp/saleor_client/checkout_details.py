@@ -50,12 +50,19 @@ class CheckoutDetailsCheckoutLines(BaseModel):
 
 
 class CheckoutDetailsCheckoutLinesVariant(BaseModel):
+    id: str
     name: str
     product: "CheckoutDetailsCheckoutLinesVariantProduct"
 
 
 class CheckoutDetailsCheckoutLinesVariantProduct(BaseModel):
+    id: str
     name: str
+    thumbnail: Optional["CheckoutDetailsCheckoutLinesVariantProductThumbnail"]
+
+
+class CheckoutDetailsCheckoutLinesVariantProductThumbnail(BaseModel):
+    url: str
 
 
 class CheckoutDetailsCheckoutShippingAddress(BaseModel):
@@ -142,6 +149,7 @@ CheckoutDetailsCheckout.model_rebuild()
 CheckoutDetailsCheckoutTotalPrice.model_rebuild()
 CheckoutDetailsCheckoutLines.model_rebuild()
 CheckoutDetailsCheckoutLinesVariant.model_rebuild()
+CheckoutDetailsCheckoutLinesVariantProduct.model_rebuild()
 CheckoutDetailsCheckoutShippingAddress.model_rebuild()
 CheckoutDetailsCheckoutBillingAddress.model_rebuild()
 CheckoutDetailsCheckoutShippingMethods.model_rebuild()
