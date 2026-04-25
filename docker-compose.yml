@@ -3,11 +3,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: saleor-mcp:latest
-    container_name: saleor-mcp
+    image: saleor-mcp-client
+    container_name: saleor-mcp-client
     restart: always
     ports:
-      - "8000:8000"
+      - "8004:8000"
     environment:
       # Restrict chỉ cho phép domain bi193.com; bỏ trống để allow all
       ALLOWED_DOMAIN_PATTERN: "https:\\/\\/api\\.bi193\\.com\\/graphql\\/"
@@ -23,7 +23,7 @@ services:
       # SALEOR_AUTH_TOKEN: "your_token_here"
       LOGLEVEL: "INFO"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
       interval: 30s
       timeout: 10s
       retries: 3
