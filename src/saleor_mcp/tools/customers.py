@@ -19,6 +19,7 @@ class CustomerFilterInput(BaseModel):
 
 
 @customers_router.tool(
+    tags={"scope:admin"},
     annotations={
         "title": "Fetch customers",
         "readOnlyHint": True,

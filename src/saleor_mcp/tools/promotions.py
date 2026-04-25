@@ -6,6 +6,7 @@ from ..saleor_client.input_types import PromotionWhereInput
 promotions_router = FastMCP("Promotions MCP")
 
 @promotions_router.tool(
+    tags={"scope:admin"},
     annotations={
         "title": "List Promotions",
     }
@@ -34,6 +35,7 @@ async def list_promotions(
         raise
 
 @promotions_router.tool(
+    tags={"scope:customer.read"},
     annotations={
         "title": "Evaluate Cart Promotions",
     }

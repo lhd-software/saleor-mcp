@@ -1,0 +1,18 @@
+query Me {
+  me {
+    id
+    email
+    firstName
+    lastName
+    isActive
+    isStaff
+    languageCode
+    dateJoined
+    lastLogin
+    defaultShippingAddress {
+      country {
+        code
+      }
+    }
+  }
+}

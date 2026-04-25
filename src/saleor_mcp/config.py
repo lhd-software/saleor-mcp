@@ -32,13 +32,25 @@ class SaleorConfig:
     auth_token: str
 
 
+def _extract_bearer(header_value: str | None) -> str | None:
+    if not header_value:
+        return None
+    parts = header_value.strip().split(None, 1)
+    if len(parts) == 2 and parts[0].lower() == "bearer":
+        return parts[1].strip()
+    return None
+
+
 def get_config_from_headers() -> SaleorConfig:
     """Extract Saleor configuration from HTTP headers or environment variables.
 
-    Note: This function works only within a request context for headers,
-    but can fall back to environment variables for stdio transport.
+    Token resolution order (first match wins):
+      1. `Authorization: Bearer <token>` — OAuth-standard, used when the
+         client went through the OAuth flow advertised in
+         /.well-known/oauth-protected-resource.
+      2. `X-Saleor-Auth-Token` — legacy header, kept for back-compat.
+      3. `SALEOR_AUTH_TOKEN` env var — stdio / dev fallback.
     """
-
     allowed_domain_pattern = os.getenv("ALLOWED_DOMAIN_PATTERN", "")
     try:
         headers = get_http_headers()
@@ -54,10 +66,15 @@ def get_config_from_headers() -> SaleorConfig:
     if allowed_domain_pattern and not validate_api_url(api_url, allowed_domain_pattern):
         raise ToolError(f"API URL '{api_url}' is not allowed")
 
-    auth_token = headers.get("x-saleor-auth-token") or os.getenv("SALEOR_AUTH_TOKEN")
+    auth_token = (
+        _extract_bearer(headers.get("authorization"))
+        or headers.get("x-saleor-auth-token")
+        or os.getenv("SALEOR_AUTH_TOKEN")
+    )
     if not auth_token:
         raise ToolError(
-            "Missing Saleor Auth Token (X-Saleor-Auth-Token header or SALEOR_AUTH_TOKEN env var)"
+            "Missing Saleor Auth Token (Authorization: Bearer <token>, "
+            "X-Saleor-Auth-Token header, or SALEOR_AUTH_TOKEN env var)"
         )
 
     return SaleorConfig(

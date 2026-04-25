@@ -13,6 +13,7 @@ products_router = FastMCP("Products MCP")
 
 
 @products_router.tool(
+    tags={"scope:customer.read"},
     annotations={
         "title": "Fetch products",
         "readOnlyHint": True,
@@ -90,6 +91,7 @@ async def products(
 
 
 @products_router.tool(
+    tags={"scope:admin"},
     annotations={
         "title": "Fetch stocks",
         "readOnlyHint": True,
@@ -143,6 +145,7 @@ async def stocks(
 
 
 @products_router.tool(
+    tags={"scope:admin"},
     annotations={
         "title": "Fetch warehouse details",
         "readOnlyHint": True,

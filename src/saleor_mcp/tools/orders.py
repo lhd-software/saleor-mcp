@@ -20,6 +20,7 @@ class OrderFilterInput(BaseModel):
 
 
 @orders_router.tool(
+    tags={"scope:admin"},
     annotations={
         "title": "Fetch orders",
         "readOnlyHint": True,
@@ -85,6 +86,7 @@ async def orders(
 
 
 @orders_router.tool(
+    tags={"scope:customer.read"},
     annotations={
         "title": "Track order",
         "readOnlyHint": True,

@@ -4,14 +4,20 @@ from urllib.parse import quote, urlparse
 
 import httpx
 from fastmcp import Context, FastMCP
+from fastmcp.server.auth.auth import RemoteAuthProvider
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
 from fastmcp.tools.tool import ToolResult
 from mcp.types import TextContent
+from pydantic import AnyHttpUrl
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import JSONResponse, Response
 from starlette.staticfiles import StaticFiles
 
-from saleor_mcp.docs import generate_html
+from saleor_mcp.auth import (
+    SCOPE_CUSTOMER_READ,
+    SaleorTokenVerifier,
+    ScopeEnforcementMiddleware,
+)
 from saleor_mcp.tools import (
     channels_router,
     checkout_router,
@@ -54,8 +60,45 @@ def _proxy_thumb_url(original_url: str | None) -> str | None:
     return f"{PUBLIC_BASE_URL}/img?u={quote(original_url, safe='')}"
 
 
-mcp = FastMCP("Saleor MCP Server")
+def _build_auth_provider() -> RemoteAuthProvider | None:
+    """Construct a RemoteAuthProvider when OAuth env vars are set.
+
+    Opt-in: setting `OAUTH_AUTHORIZATION_SERVERS` (comma-separated list of
+    issuer URLs — typically `https://bi193.com`) turns on:
+      * /.well-known/oauth-protected-resource (RFC 9728) advertising the
+        upstream authorization server,
+      * 401 + WWW-Authenticate on missing/invalid bearer token,
+      * scope claims surfaced via `get_access_token()` so the
+        ScopeEnforcementMiddleware can gate per-tool access.
+
+    When unset, the server runs in legacy mode: no OAuth metadata, tokens
+    accepted from `X-Saleor-Auth-Token` only, and scope checks are
+    soft (the middleware sees no AccessToken and lets calls through).
+    """
+    raw = os.getenv("OAUTH_AUTHORIZATION_SERVERS", "").strip()
+    if not raw:
+        return None
+    servers = [AnyHttpUrl(s.strip()) for s in raw.split(",") if s.strip()]
+    if not servers:
+        return None
+
+    base_url = os.getenv("MCP_PUBLIC_BASE_URL") or PUBLIC_BASE_URL
+
+    return RemoteAuthProvider(
+        token_verifier=SaleorTokenVerifier(
+            required_scopes=[SCOPE_CUSTOMER_READ],
+        ),
+        authorization_servers=servers,
+        base_url=AnyHttpUrl(base_url),
+        resource_name=os.getenv("OAUTH_RESOURCE_NAME", "Saleor MCP"),
+    )
+
+
+_auth_provider = _build_auth_provider()
+
+mcp = FastMCP("Saleor MCP Server", auth=_auth_provider)
 mcp.add_middleware(DetailedTimingMiddleware())
+mcp.add_middleware(ScopeEnforcementMiddleware())
 mcp.mount(channels_router)
 mcp.mount(checkout_router)
 mcp.mount(customers_router)
@@ -77,11 +120,12 @@ RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
 async def product_explorer_ui() -> str:
     """The Product Explorer UI application (Vite-built single-file)."""
     path = "ui-app/dist/mcp-app.html"
-    with open(path, "r") as f:
+    with open(path) as f:
         return f.read()
 
 
 @mcp.tool(
+    tags={"scope:customer.read"},
     meta={
         "ui": {
             "resourceUri": RESOURCE_URI,
@@ -98,11 +142,13 @@ async def open_product_explorer(
 
     This tool renders a graphical product grid with thumbnails, prices, and variants.
     IMPORTANT: Always pass the 'search' parameter based on what the user is looking for.
+
     Examples:
       - User wants shoes -> search='shoes'
       - User wants gifts for kids -> search='kids'
       - User wants hoodies -> search='hoodie'
     Only omit search if user explicitly wants to see ALL products.
+
     """
     from saleor_mcp.ctx_utils import get_saleor_client
 
@@ -208,7 +254,7 @@ def _serialize_checkout(checkout: object) -> dict:
             # Safely extract variant and product info
             variant = getattr(ln, "variant", None)
             product = getattr(variant, "product", None) if variant else None
-            
+
             v_name = getattr(variant, "name", "") or ""
             p_name = getattr(product, "name", "") or ""
 
@@ -312,6 +358,7 @@ def _serialize_product(p: object) -> dict:
 
 
 @mcp.tool(
+    tags={"scope:customer.read"},
     meta={"ui": {"resourceUri": RESOURCE_URI}},
     annotations={
         "title": "Product detail",
@@ -365,7 +412,7 @@ async def get_product_details(
     )
 
 
-@mcp.tool(meta={"ui": {"resourceUri": RESOURCE_URI}})
+@mcp.tool(tags={"scope:customer.read"}, meta={"ui": {"resourceUri": RESOURCE_URI}})
 async def open_cart(
     ctx: Context,
     checkout_id: str,
@@ -386,7 +433,7 @@ async def open_cart(
         return {"view": "cart", "error": str(e)}
 
 
-@mcp.tool(meta={"ui": {"resourceUri": RESOURCE_URI}})
+@mcp.tool(tags={"scope:customer.write"}, meta={"ui": {"resourceUri": RESOURCE_URI}})
 async def open_checkout(
     ctx: Context,
     checkout_id: str,
@@ -403,10 +450,12 @@ async def open_checkout(
     Use this when the user is ready to proceed from cart to checkout.
     IMPORTANT: If the user has mentioned their name, address, phone, or city in the
     conversation, pass those values here to pre-fill the form automatically.
+
     Examples:
       - User says "tôi ở 123 Nguyễn Huệ, Q1, HCM" -> street_address="123 Nguyễn Huệ", city="Ho Chi Minh"
       - User says "tên tôi là Nguyễn Văn A" -> first_name="Văn A", last_name="Nguyễn"
       - User says "ship về VN" -> country="VN"
+
     """
     from saleor_mcp.ctx_utils import get_saleor_client
     client = get_saleor_client()

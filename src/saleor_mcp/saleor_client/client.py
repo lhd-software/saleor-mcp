@@ -39,6 +39,7 @@ from .list_orders import ListOrders
 from .list_products import ListProducts
 from .list_promotions import ListPromotions
 from .list_stocks import ListStocks
+from .me import Me
 from .product_details import ProductDetails
 from .track_order import TrackOrder
 from .warehouse_details import WarehouseDetails
@@ -985,6 +986,36 @@ class Client(AsyncBaseClient):
         )
         data = self.get_data(response)
         return ListStocks.model_validate(data)
+
+    async def me(self, **kwargs: Any) -> Me:
+        query = gql(
+            """
+            query Me {
+              me {
+                id
+                email
+                firstName
+                lastName
+                isActive
+                isStaff
+                languageCode
+                dateJoined
+                lastLogin
+                defaultShippingAddress {
+                  country {
+                    code
+                  }
+                }
+              }
+            }
+            """
+        )
+        variables: Dict[str, object] = {}
+        response = await self.execute(
+            query=query, operation_name="Me", variables=variables, **kwargs
+        )
+        data = self.get_data(response)
+        return Me.model_validate(data)
 
     async def product_details(
         self,

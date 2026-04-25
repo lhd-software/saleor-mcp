@@ -43,6 +43,7 @@ def _get_active_checkout() -> str | None:
 
 
 @checkout_router.tool(
+    tags={"scope:customer.write"},
     annotations={"title": "Add to Cart"}
 )
 async def add_to_cart(
@@ -101,6 +102,7 @@ async def add_to_cart(
 
 
 @checkout_router.tool(
+    tags={"scope:customer.write"},
     annotations={"title": "Update Cart Item"}
 )
 async def update_cart_item(
@@ -122,6 +124,7 @@ async def update_cart_item(
 
 
 @checkout_router.tool(
+    tags={"scope:customer.write"},
     annotations={"title": "Remove from Cart"}
 )
 async def remove_from_cart(
@@ -142,6 +145,7 @@ async def remove_from_cart(
 
 
 @checkout_router.tool(
+    tags={"scope:customer.read"},
     annotations={
         "title": "Current active checkout",
         "readOnlyHint": True,
@@ -183,6 +187,7 @@ async def current_checkout(ctx: Context) -> dict[str, Any]:
 
 
 @checkout_router.tool(
+    tags={"scope:customer.read"},
     annotations={"title": "Get Checkout Details"}
 )
 async def get_checkout(
@@ -202,6 +207,7 @@ async def get_checkout(
 
 
 @checkout_router.tool(
+    tags={"scope:customer.write"},
     annotations={"title": "Set Checkout Email"}
 )
 async def set_checkout_email(
@@ -222,6 +228,7 @@ async def set_checkout_email(
 
 
 @checkout_router.tool(
+    tags={"scope:customer.write"},
     annotations={"title": "Set Checkout Delivery"}
 )
 async def set_checkout_delivery(
@@ -302,6 +309,7 @@ async def set_checkout_delivery(
 
 
 @checkout_router.tool(
+    tags={"scope:customer.write"},
     annotations={"title": "Place Order"}
 )
 async def place_order(

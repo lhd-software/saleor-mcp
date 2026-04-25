@@ -678,6 +678,7 @@ from .list_stocks import (
     ListStocksStocksEdgesNodeWarehouse,
     ListStocksStocksPageInfo,
 )
+from .me import Me, MeMe, MeMeDefaultShippingAddress, MeMeDefaultShippingAddressCountry
 from .product_details import (
     ProductDetails,
     ProductDetailsProduct,
@@ -1044,6 +1045,10 @@ __all__ = [
     "ListStocksStocksEdgesNodeWarehouse",
     "ListStocksStocksPageInfo",
     "MarkAsPaidStrategyEnum",
+    "Me",
+    "MeMe",
+    "MeMeDefaultShippingAddress",
+    "MeMeDefaultShippingAddressCountry",
     "MeasurementUnitsEnum",
     "MeasurementUnitsEnumFilterInput",
     "MediaChoicesSortField",

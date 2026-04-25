@@ -8,6 +8,7 @@ channels_router = FastMCP("Channels MCP")
 
 
 @channels_router.tool(
+    tags={"scope:admin"},
     annotations={
         "title": "Fetch channels",
         "readOnlyHint": True,

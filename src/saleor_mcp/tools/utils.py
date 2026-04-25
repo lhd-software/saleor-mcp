@@ -1,6 +1,7 @@
 from typing import Annotated, Any
 
 from fastmcp import Context, FastMCP
+from fastmcp.server.dependencies import get_access_token
 
 from ..config import get_config_from_headers
 from ..ctx_utils import get_saleor_client
@@ -8,7 +9,7 @@ from ..ctx_utils import get_saleor_client
 utils_router = FastMCP("Utils MCP")
 
 
-@utils_router.tool()
+@utils_router.tool(tags={"scope:customer.read"})
 def current_domain() -> str:
     """Return the current domain of the connected Saleor instance."""
 
@@ -17,6 +18,7 @@ def current_domain() -> str:
 
 
 @utils_router.tool(
+    tags={"scope:customer.read"},
     annotations={
         "title": "Catalog Overview",
         "readOnlyHint": True,
@@ -73,4 +75,53 @@ async def catalog_overview(
         "channel": channel,
         "categories": categories,
         "collections": collections,
+    }
+
+
+@utils_router.tool(
+    tags={"scope:customer.read"},
+    annotations={
+        "title": "Current user (me)",
+        "readOnlyHint": True,
+        "idempotentHint": True,
+    },
+)
+async def me(ctx: Context) -> dict[str, Any]:
+    """Return the customer profile of the current bearer token.
+
+    Useful right after the OAuth flow finishes — verifies the token is
+    valid and surfaces the user identity (id, email, name) the agent is
+    acting on behalf of. Returns `{"user": null}` if the token is not
+    associated with a user account (e.g. a staff app token).
+    """
+    client = get_saleor_client()
+    try:
+        data = await client.me()
+    except Exception as e:
+        await ctx.error(str(e))
+        return {"error": str(e), "user": None}
+
+    user = data.me
+    if user is None:
+        return {"user": None}
+
+    token_scopes: list[str] = []
+    try:
+        token = get_access_token()
+        if token is not None:
+            token_scopes = sorted(token.scopes)
+    except Exception:
+        pass
+
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "firstName": user.firstName,
+            "lastName": user.lastName,
+            "isActive": user.isActive,
+            "isStaff": user.isStaff,
+            "languageCode": user.languageCode.value if user.languageCode else None,
+        },
+        "scopes": token_scopes,
     }
