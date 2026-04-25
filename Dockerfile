@@ -12,8 +12,7 @@ ENV UV_PROJECT_ENVIRONMENT=/usr/local
 COPY pyproject.toml uv.lock README.md ./
 COPY src/ ./src/
 
-RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev
+RUN uv sync --locked
 
 # ─────────────────────────────────────────────
 # Stage 2: Final slim image
