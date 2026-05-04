@@ -29,7 +29,7 @@ COPY --from=build-python /usr/local/bin/ /usr/local/bin/
 COPY --from=build-python /app/src/ ./src/
 
 # Copy UI app đã build local (Quan trọng: Phải build npm run build local trước)
-# COPY ui-app/dist/ ./ui-app/dist/
+COPY ui-app/dist/ ./ui-app/dist/
 
 # Expose port
 EXPOSE 8000
