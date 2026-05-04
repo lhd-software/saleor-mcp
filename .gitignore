@@ -5,7 +5,7 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-# dist/
+dist/
 downloads/
 eggs/
 .eggs/
@@ -126,7 +126,7 @@ dmypy.json
 # Node.js / Vite (ui-app)
 node_modules/
 **/node_modules/
-ui-app/dist/
+# ui-app/dist/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
