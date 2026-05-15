@@ -1,12 +1,16 @@
 import hashlib
 import hmac
+import logging
 import os
 import secrets
 from typing import Any
 from urllib.parse import quote
 
+logger = logging.getLogger(__name__)
+
 import httpx
 from fastmcp import Context, FastMCP
+from fastmcp.server.dependencies import get_http_headers as _get_http_headers
 from fastmcp.server.auth.auth import RemoteAuthProvider
 from fastmcp.server.middleware.timing import DetailedTimingMiddleware
 from fastmcp.tools.tool import ToolResult
@@ -34,7 +38,7 @@ from saleor_mcp.tools import (
 # Public URL at which this MCP server is reachable from the UI iframe.
 # UI thumbnail URLs are rewritten to flow through {PUBLIC_BASE_URL}/img?u=<saleor_url>
 # so Saleor's `content-disposition: attachment` header doesn't break inline <img> rendering.
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:6000").rstrip("/")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
 # HMAC key used to sign proxy URLs — prevents the browser from abusing /img as
 # an open proxy. Set IMAGE_PROXY_SECRET in env for multi-instance deployments so
@@ -46,14 +50,28 @@ def _sign_url(url: str) -> str:
     return hmac.new(_IMAGE_PROXY_SECRET, url.encode(), hashlib.sha256).hexdigest()[:24]
 
 
+def _detect_base_url() -> str:
+    """Return the server's public URL, auto-detecting from request headers when not configured.
+
+    Priority: PUBLIC_BASE_URL env → x-forwarded-proto+host (reverse proxy) → host header.
+    """
+    if PUBLIC_BASE_URL:
+        return PUBLIC_BASE_URL
+    headers = _get_http_headers(include_all=True)
+    proto = headers.get("x-forwarded-proto") or "https"
+    host = headers.get("x-forwarded-host") or headers.get("host") or "localhost:6000"
+    return f"{proto}://{host}"
+
+
 def _proxy_thumb_url(original_url: str | None) -> str | None:
     """Rewrite a Saleor thumbnail URL to flow through this server's /img proxy."""
     if not original_url:
         return None
-    if original_url.startswith("data:") or original_url.startswith(PUBLIC_BASE_URL):
+    base = _detect_base_url()
+    if original_url.startswith("data:") or original_url.startswith(base):
         return original_url
     sig = _sign_url(original_url)
-    return f"{PUBLIC_BASE_URL}/img?u={quote(original_url, safe='')}&sig={sig}"
+    return f"{base}/img?u={quote(original_url, safe='')}&sig={sig}"
 
 
 def _build_auth_provider() -> RemoteAuthProvider | None:
@@ -111,7 +129,7 @@ RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
 @mcp.resource(
     RESOURCE_URI,
     mime_type=RESOURCE_MIME_TYPE,
-    meta={"ui": {"csp": {"resourceDomains": [PUBLIC_BASE_URL]}}},
+    meta={"ui": {"csp": {"resourceDomains": [PUBLIC_BASE_URL] if PUBLIC_BASE_URL else []}}},
 )
 async def product_explorer_ui() -> str:
     """The Product Explorer UI application (Vite-built single-file)."""
@@ -521,6 +539,13 @@ async def proxy_image(request: Request):
         },
     )
 
+
+if not PUBLIC_BASE_URL:
+    logger.warning(
+        "PUBLIC_BASE_URL is not set. Image proxy URLs will fall back to request-header "
+        "detection, which may produce wrong URLs behind reverse proxies. "
+        "Set PUBLIC_BASE_URL=https://<your-domain> to fix image loading in the UI."
+    )
 
 app = mcp.http_app(stateless_http=True)
 app.mount("/static", StaticFiles(directory="src/saleor_mcp/static"), name="static")
