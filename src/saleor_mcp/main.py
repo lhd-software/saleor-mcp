@@ -1,6 +1,9 @@
+import hashlib
+import hmac
 import os
+import secrets
 from typing import Any
-from urllib.parse import quote, urlparse
+from urllib.parse import quote
 
 import httpx
 from fastmcp import Context, FastMCP
@@ -31,24 +34,16 @@ from saleor_mcp.tools import (
 # Public URL at which this MCP server is reachable from the UI iframe.
 # UI thumbnail URLs are rewritten to flow through {PUBLIC_BASE_URL}/img?u=<saleor_url>
 # so Saleor's `content-disposition: attachment` header doesn't break inline <img> rendering.
-PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:8000").rstrip("/")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "http://localhost:6000").rstrip("/")
+
+# HMAC key used to sign proxy URLs — prevents the browser from abusing /img as
+# an open proxy. Set IMAGE_PROXY_SECRET in env for multi-instance deployments so
+# all instances share the same key; otherwise a random key is generated per startup.
+_IMAGE_PROXY_SECRET = os.getenv("IMAGE_PROXY_SECRET", secrets.token_hex(32)).encode()
 
 
-def _allowed_image_hosts() -> set[str]:
-    """Hosts the image proxy will fetch from.
-
-    Priority: explicit ALLOWED_IMAGE_HOSTS env (comma-separated) → host of
-    SALEOR_API_URL env. Empty set means proxy refuses every URL.
-    """
-    explicit = os.getenv("ALLOWED_IMAGE_HOSTS", "").strip()
-    if explicit:
-        return {h.strip() for h in explicit.split(",") if h.strip()}
-    saleor_url = os.getenv("SALEOR_API_URL", "").strip()
-    if saleor_url:
-        host = urlparse(saleor_url).hostname
-        if host:
-            return {host}
-    return set()
+def _sign_url(url: str) -> str:
+    return hmac.new(_IMAGE_PROXY_SECRET, url.encode(), hashlib.sha256).hexdigest()[:24]
 
 
 def _proxy_thumb_url(original_url: str | None) -> str | None:
@@ -57,7 +52,8 @@ def _proxy_thumb_url(original_url: str | None) -> str | None:
         return None
     if original_url.startswith("data:") or original_url.startswith(PUBLIC_BASE_URL):
         return original_url
-    return f"{PUBLIC_BASE_URL}/img?u={quote(original_url, safe='')}"
+    sig = _sign_url(original_url)
+    return f"{PUBLIC_BASE_URL}/img?u={quote(original_url, safe='')}&sig={sig}"
 
 
 def _build_auth_provider() -> RemoteAuthProvider | None:
@@ -493,23 +489,18 @@ async def health_check(request: Request):
 
 @mcp.custom_route("/img", methods=["GET"])
 async def proxy_image(request: Request):
-    """Proxy whitelisted upstream image URLs.
+    """Proxy HMAC-signed upstream image URLs.
 
     Why: Saleor serves thumbnails with `content-disposition: attachment`, which
-    Claude Desktop's sandboxed iframe treats as a forced download and refuses
-    to render inline via <img>. We refetch and re-serve without that header
-    (and with a generous cache so the host can cache by URL).
+    Claude Desktop's sandboxed iframe refuses to render inline. We refetch and
+    re-serve without that header. The `sig` parameter prevents open-proxy abuse.
     """
     url = request.query_params.get("u", "")
+    sig = request.query_params.get("sig", "")
     if not url or not (url.startswith("http://") or url.startswith("https://")):
         return JSONResponse({"error": "invalid url"}, status_code=400)
-    host = urlparse(url).hostname
-    allowed = _allowed_image_hosts()
-    if not host or host not in allowed:
-        return JSONResponse(
-            {"error": "host not allowed", "host": host, "allowed": sorted(allowed)},
-            status_code=403,
-        )
+    if not hmac.compare_digest(sig, _sign_url(url)):
+        return JSONResponse({"error": "invalid signature"}, status_code=403)
     try:
         async with httpx.AsyncClient(follow_redirects=True, timeout=10.0) as http:
             upstream = await http.get(url)

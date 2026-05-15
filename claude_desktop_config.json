@@ -8,37 +8,19 @@
       ],
       "env": {}
     },
-    "saleor-mcp-origin": {
-      "comment": "Bản gốc Saleor MCP — chỉ đọc (products, orders). Dùng khi cần test với Saleor Cloud.",
-      "type": "http",
-      "url": "https://mcp.saleor.app/mcp",
-      "headers": {
-        "X-Saleor-API-URL": "https://api.bi193.com/graphql/",
-        "X-Saleor-Auth-Token": "iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
-      }
-    },
-    "store4ai-mcp": {
-      "comment": "Local dev — chạy trực tiếp từ source code (stdio). Dùng khi đang phát triển.",
-      "command": "uv",
+    "aideal": {
+      "command": "npx",
       "args": [
-        "--directory",
-        "/Users/nguyendat/Code/work/store4ai/saleor-mcp",
-        "run",
-        "saleor-mcp"
-      ],
-      "env": {
-        "SALEOR_API_URL": "https://api.bi193.com/graphql/",
-        "SALEOR_AUTH_TOKEN": "pmKtQyFPIGuRNTroIE5NlOY1Bi470k"
-      }
-    },
-    "store4ai-mcp-remote": {
-      "comment": "Custom MCP Remote — khi subdomain store4ai-mcp.bi193.com online.",
-      "type": "http",
-      "url": "https://store4ai-mcp.bi193.com/mcp",
-      "headers": {
-        "X-Saleor-API-URL": "https://api.bi193.com/graphql/",
-        "X-Saleor-Auth-Token": "pmKtQyFPIGuRNTroIE5NlOY1Bi470k"
-      }
+        "-y",
+        "mcp-remote",
+        "https://mcp4client.aideal.vn/mcp",
+        "--transport",
+        "http-only",
+        "--header",
+        "X-Saleor-API-URL: https://api.bi193.com/graphql/",
+        "--header",
+        "X-Saleor-Auth-Token: iim23V4z72d0Bg9BUS8PUGaDNQ671ha"
+      ]
     }
   },
   "preferences": {
@@ -50,6 +32,16 @@
     "coworkScheduledTasksEnabled": true,
     "ccdScheduledTasksEnabled": true,
     "sidebarMode": "chat",
-    "coworkWebSearchEnabled": true
+    "coworkWebSearchEnabled": true,
+    "epitaxyPrefs": {
+      "starred-local-code-sessions": [],
+      "starred-cowork-spaces": [],
+      "starred-session-groups": [],
+      "dframe-local-slice": {
+        "pinnedOrder": [],
+        "customGroupAssignments": {},
+        "customGroupOrder": {}
+      }
+    }
   }
 }
