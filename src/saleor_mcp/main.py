@@ -40,6 +40,23 @@ from saleor_mcp.tools import (
 # so Saleor's `content-disposition: attachment` header doesn't break inline <img> rendering.
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "").rstrip("/")
 
+# Hosts whose images can be loaded directly by the iframe without going through
+# the proxy (they don't set content-disposition: attachment).
+# These are also added to resourceDomains so Claude Desktop whitelists them in CSP.
+# Example: DIRECT_IMAGE_HOSTS=api.aideal.vn,cdn.example.com
+_DIRECT_IMAGE_HOSTS: set[str] = {
+    h.strip()
+    for h in os.getenv("DIRECT_IMAGE_HOSTS", "").split(",")
+    if h.strip()
+}
+
+# resourceDomains tells the MCP host (Claude Desktop) what external origins the
+# iframe will load from — it uses this to build the iframe's Content-Security-Policy.
+_RESOURCE_DOMAINS: list[str] = (
+    ([PUBLIC_BASE_URL] if PUBLIC_BASE_URL else [])
+    + [f"https://{h}" for h in _DIRECT_IMAGE_HOSTS]
+)
+
 # HMAC key used to sign proxy URLs — prevents the browser from abusing /img as
 # an open proxy. Set IMAGE_PROXY_SECRET in env for multi-instance deployments so
 # all instances share the same key; otherwise a random key is generated per startup.
@@ -64,11 +81,18 @@ def _detect_base_url() -> str:
 
 
 def _proxy_thumb_url(original_url: str | None) -> str | None:
-    """Rewrite a Saleor thumbnail URL to flow through this server's /img proxy."""
+    """Rewrite a Saleor thumbnail URL to flow through the /img proxy, or return
+    it unchanged when its host is in DIRECT_IMAGE_HOSTS (no proxy needed)."""
     if not original_url:
         return None
+    if original_url.startswith("data:"):
+        return original_url
+    from urllib.parse import urlparse as _urlparse
+    host = _urlparse(original_url).hostname or ""
+    if host in _DIRECT_IMAGE_HOSTS:
+        return original_url  # load directly; Claude Desktop CSP allows it via resourceDomains
     base = _detect_base_url()
-    if original_url.startswith("data:") or original_url.startswith(base):
+    if original_url.startswith(base):
         return original_url
     sig = _sign_url(original_url)
     return f"{base}/img?u={quote(original_url, safe='')}&sig={sig}"
@@ -129,7 +153,7 @@ RESOURCE_MIME_TYPE = "text/html;profile=mcp-app"
 @mcp.resource(
     RESOURCE_URI,
     mime_type=RESOURCE_MIME_TYPE,
-    meta={"ui": {"csp": {"resourceDomains": [PUBLIC_BASE_URL] if PUBLIC_BASE_URL else []}}},
+    meta={"ui": {"csp": {"resourceDomains": _RESOURCE_DOMAINS}}},
 )
 async def product_explorer_ui() -> str:
     """The Product Explorer UI application (Vite-built single-file)."""

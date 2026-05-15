@@ -108,6 +108,6 @@ Tests mock the Saleor client and config headers — they never make real network
 | `ALLOWED_DOMAIN_PATTERN` | Regex restricting allowed API URLs |
 | `OAUTH_AUTHORIZATION_SERVERS` | Comma-separated issuer URLs; enables OAuth mode |
 | `SALEOR_REQUIRE_JWT_SHAPE` | `true` (default): reject non-JWT tokens; `false`: accept plain app tokens |
-| `PUBLIC_BASE_URL` | Public URL used for image proxy rewriting |
-| `ALLOWED_IMAGE_HOSTS` | Comma-separated hosts to proxy (defaults to `SALEOR_API_URL` host) |
+| `PUBLIC_BASE_URL` | Public URL used for image proxy rewriting (required for deployed instances) |
+| `DIRECT_IMAGE_HOSTS` | Comma-separated image hostnames to load directly without proxy (e.g. `api.aideal.vn`); these are added to CSP `resourceDomains` so Claude Desktop whitelists them |
 | `LOGLEVEL` | Logging level (`DEBUG`, `INFO`, `WARNING`, `ERROR`) |
